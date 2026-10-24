@@ -1,1 +1,137 @@
-rotating_time=5
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webcam Carrousel</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background-color: #000;
+      overflow: hidden;
+    }
+    iframe {
+      width: 100vw;
+      height: 100vh;
+      border: none;
+      display: block;
+    }
+    /* Klikbaar overlay om browservoorwaarden voor fullscreen te omzeilen */
+    #start-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: sans-serif;
+      cursor: pointer;
+      z-index: 9999;
+    }
+    #start-overlay h1 {
+      margin-bottom: 10px;
+    }
+    #start-overlay p {
+      color: #aaa;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="start-overlay" onclick="startApp()">
+    <h1>Klik / Tik om te starten</h1>
+    <p>Dit activeert de webcam carrousel op volledig scherm</p>
+  </div>
+
+  <iframe id="webcamFrame" src="about:blank" allow="autoplay; fullscreen"></iframe>
+
+  <script>
+    let webcamURLs = [];
+    let intervalInSeconds = 5; // Standaard terugvalwaarde
+    let currentIndex = 0;
+    let timerId = null;
+
+    const iframe = document.getElementById('webcamFrame');
+    const overlay = document.getElementById('start-overlay');
+
+    // 1. Haal de rotatietijd op uit config.file
+    async function loadConfig() {
+      try {
+        const response = await fetch('config.file');
+        if (response.ok) {
+          const text = await response.text();
+          const match = text.match(/^rotating_time\s*=\s*(\d+)/m);
+          if (match && match[1]) {
+            intervalInSeconds = parseInt(match[1], 10);
+            console.log(`Rotatietijd ingesteld op ${intervalInSeconds} seconden.`);
+          }
+        }
+      } catch (err) {
+        console.warn("Kon config.file niet laden, terugvallen op 5s:", err);
+      }
+    }
+
+    // 2. Haal de webcams op uit webcams.list
+    async function loadWebcamList() {
+      try {
+        const response = await fetch('webcams.list');
+        if (response.ok) {
+          const text = await response.text();
+          webcamURLs = text
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line.length > 0 && !line.startsWith('#'));
+        }
+      } catch (err) {
+        console.error("Kon webcams.list niet laden:", err);
+      }
+    }
+
+    // 3. Toon de volgende webcam in het iframe
+    function showNextWebcam() {
+      if (webcamURLs.length === 0) return;
+      iframe.src = webcamURLs[currentIndex];
+      currentIndex = (currentIndex + 1) % webcamURLs.length;
+    }
+
+    // 4. Start de carrousel en activeer Native Fullscreen
+    async function startApp() {
+      // Verberg de overlay
+      overlay.style.display = 'none';
+
+      // Vraag native browser fullscreen aan
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+      } else if (elem.webkitRequestFullscreen) { /* Safari / iOS */
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) { /* IE11 */
+        elem.msRequestFullscreen();
+      }
+
+      // Laad gegevens en start de lus
+      await loadConfig();
+      await loadWebcamList();
+
+      if (webcamURLs.length > 0) {
+        showNextWebcam();
+        timerId = setInterval(showNextWebcam, intervalInSeconds * 1000);
+      } else {
+        alert("Geen geldige URL's gevonden in webcams.list!");
+      }
+    }
+  </script>
+
+</body>
+</html>
