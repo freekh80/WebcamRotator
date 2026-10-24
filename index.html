@@ -38,20 +38,30 @@
       font-family: sans-serif;
       cursor: pointer;
       z-index: 9999;
+      text-align: center;
+      padding: 20px;
     }
     #start-overlay h1 {
       margin-bottom: 10px;
     }
     #start-overlay p {
       color: #aaa;
+      margin-top: 5px;
+    }
+    #info-text {
+      color: #00d2ff;
+      font-weight: bold;
+      margin-top: 15px;
+      font-size: 1.1em;
     }
   </style>
 </head>
 <body>
 
   <div id="start-overlay" onclick="startApp()">
-    <h1>Hoi! Klik / Tik om te starten</h1>
+    <h1>Klik / Tik om te starten</h1>
     <p>Dit activeert de webcam carrousel op volledig scherm</p>
+    <p id="info-text">Instellingen laden...</p>
   </div>
 
   <iframe id="webcamFrame" src="about:blank" allow="autoplay; fullscreen"></iframe>
@@ -64,6 +74,7 @@
 
     const iframe = document.getElementById('webcamFrame');
     const overlay = document.getElementById('start-overlay');
+    const infoText = document.getElementById('info-text');
 
     // 1. Haal de rotatietijd op uit config.file (met cache-busting)
     async function loadConfig() {
@@ -75,8 +86,6 @@
           if (match && match[1]) {
             intervalInSeconds = parseInt(match[1], 10);
             console.log(`Rotatietijd ingesteld op ${intervalInSeconds} seconden.`);
-          } else {
-            console.warn("Geen geldige rotating_time gevonden in config.file. Gebruikt standaard 5s.");
           }
         }
       } catch (err) {
@@ -107,8 +116,17 @@
       currentIndex = (currentIndex + 1) % webcamURLs.length;
     }
 
-    // 4. Start de carrousel en activeer Native Fullscreen
-    async function startApp() {
+    // 4. Initieer gegevens bij het laden van de pagina
+    async function init() {
+      await loadConfig();
+      await loadWebcamList();
+      
+      // Update de tekst in de overlay met de opgehaalde interval en aantal cams
+      infoText.textContent = `Rotatietijd: ${intervalInSeconds} seconden | Webcams geladen: ${webcamURLs.length}`;
+    }
+
+    // 5. Start de carrousel en activeer Native Fullscreen
+    function startApp() {
       // Verberg de overlay
       overlay.style.display = 'none';
 
@@ -122,10 +140,6 @@
         elem.msRequestFullscreen();
       }
 
-      // Laad gegevens en start de lus
-      await loadConfig();
-      await loadWebcamList();
-
       if (webcamURLs.length > 0) {
         showNextWebcam();
         timerId = setInterval(showNextWebcam, intervalInSeconds * 1000);
@@ -133,5 +147,10 @@
         alert("Geen geldige URL's gevonden in webcams.list!");
       }
     }
+
+    // Voer de initialisatie direct uit
+    init();
   </script>
 
+</body>
+</html>
