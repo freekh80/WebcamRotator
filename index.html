@@ -65,16 +65,18 @@
     const iframe = document.getElementById('webcamFrame');
     const overlay = document.getElementById('start-overlay');
 
-    // 1. Haal de rotatietijd op uit config.file
+    // 1. Haal de rotatietijd op uit config.file (met cache-busting)
     async function loadConfig() {
       try {
-        const response = await fetch('config.file');
+        const response = await fetch('config.file?t=' + new Date().getTime());
         if (response.ok) {
           const text = await response.text();
-          const match = text.match(/^rotating_time\s*=\s*(\d+)/m);
+          const match = text.match(/rotating_time\s*=\s*(\d+)/i);
           if (match && match[1]) {
             intervalInSeconds = parseInt(match[1], 10);
             console.log(`Rotatietijd ingesteld op ${intervalInSeconds} seconden.`);
+          } else {
+            console.warn("Geen geldige rotating_time gevonden in config.file. Gebruikt standaard 5s.");
           }
         }
       } catch (err) {
@@ -82,10 +84,10 @@
       }
     }
 
-    // 2. Haal de webcams op uit webcams.list
+    // 2. Haal de webcams op uit webcams.list (met cache-busting)
     async function loadWebcamList() {
       try {
-        const response = await fetch('webcams.list');
+        const response = await fetch('webcams.list?t=' + new Date().getTime());
         if (response.ok) {
           const text = await response.text();
           webcamURLs = text
@@ -133,5 +135,3 @@
     }
   </script>
 
-</body>
-</html>
