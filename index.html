@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Webcam Carrousel</title>
+  <title>Webcam Carrousel (2x2 met Zoom)</title>
   <style>
     * {
       margin: 0;
@@ -15,13 +15,84 @@
       height: 100%;
       background-color: #000;
       overflow: hidden;
+      font-family: sans-serif;
     }
-    iframe {
+    /* 2x2 Grid Layout */
+    #grid-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 1fr 1fr;
       width: 100vw;
       height: 100vh;
+      background-color: #000;
+      gap: 2px;
+      position: relative;
+    }
+    .iframe-wrapper {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background-color: #111;
+      overflow: hidden;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
       border: none;
       display: block;
+      pointer-events: none; /* Zorgt dat de wrapper de klik opvangt */
     }
+    /* Klikbare transparante laag over de iframe om de klik betrouwbaar te vangen */
+    .click-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+      z-index: 10;
+    }
+    /* Stijl wanneer één frame is uitgezoomd naar fullscreen */
+    .iframe-wrapper.fullscreen-active {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 9000;
+    }
+    .iframe-wrapper.fullscreen-active iframe {
+      pointer-events: auto; /* Maak interactie in de webcam zelf weer mogelijk indien gewenst */
+    }
+    .iframe-wrapper.fullscreen-active .click-overlay {
+      display: none; /* Verberg de klik-overlay in zoom stand */
+    }
+
+    /* Terugknop bij schermafbeelding op volledig scherm */
+    #back-button {
+      display: none;
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 9999;
+      background: rgba(0, 0, 0, 0.8);
+      color: #fff;
+      border: 2px solid #00d2ff;
+      padding: 12px 24px;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 8px;
+      cursor: pointer;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+      transition: background 0.2s, transform 0.1s;
+    }
+    #back-button:hover, #back-button:focus {
+      background: #00d2ff;
+      color: #000;
+      transform: scale(1.05);
+      outline: none;
+    }
+
     /* Klikbaar overlay om browservoorwaarden voor fullscreen te omzeilen */
     #start-overlay {
       position: absolute;
@@ -35,9 +106,8 @@
       flex-direction: column;
       justify-content: center;
       align-items: center;
-      font-family: sans-serif;
       cursor: pointer;
-      z-index: 9999;
+      z-index: 99999;
       text-align: center;
       padding: 20px;
     }
@@ -60,21 +130,54 @@
 
   <div id="start-overlay" onclick="startApp()">
     <h1>Klik / Tik om te starten</h1>
-    <p>Dit activeert de webcam carrousel op volledig scherm</p>
+    <p>Dit activeert de 2x2 webcam carrousel op volledig scherm</p>
     <p id="info-text">Instellingen laden...</p>
   </div>
 
-  <iframe id="webcamFrame" src="about:blank" allow="autoplay; fullscreen"></iframe>
+  <button id="back-button" onclick="closeFullscreenWebcam()">← Terug naar grid</button>
+
+  <div id="grid-container">
+    <div class="iframe-wrapper" id="wrapper0">
+      <div class="click-overlay" onclick="openFullscreenWebcam(0)"></div>
+      <iframe id="frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="wrapper1">
+      <div class="click-overlay" onclick="openFullscreenWebcam(1)"></div>
+      <iframe id="frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="wrapper2">
+      <div class="click-overlay" onclick="openFullscreenWebcam(2)"></div>
+      <iframe id="frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="wrapper3">
+      <div class="click-overlay" onclick="openFullscreenWebcam(3)"></div>
+      <iframe id="frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+  </div>
 
   <script>
     let webcamURLs = [];
     let intervalInSeconds = 5; // Standaard terugvalwaarde
-    let currentIndex = 0;
+    let currentBatchIndex = 0;
     let timerId = null;
+    let isSingleWebcamZoomed = false;
+    let activeZoomedIndex = null;
 
-    const iframe = document.getElementById('webcamFrame');
+    const wrappers = [
+      document.getElementById('wrapper0'),
+      document.getElementById('wrapper1'),
+      document.getElementById('wrapper2'),
+      document.getElementById('wrapper3')
+    ];
+    const frames = [
+      document.getElementById('frame0'),
+      document.getElementById('frame1'),
+      document.getElementById('frame2'),
+      document.getElementById('frame3')
+    ];
     const overlay = document.getElementById('start-overlay');
     const infoText = document.getElementById('info-text');
+    const backButton = document.getElementById('back-button');
 
     // 1. Haal de rotatietijd op uit config.file (met cache-busting)
     async function loadConfig() {
@@ -109,48 +212,59 @@
       }
     }
 
-    // 3. Toon de volgende webcam in het iframe
-    function showNextWebcam() {
-      if (webcamURLs.length === 0) return;
-      iframe.src = webcamURLs[currentIndex];
-      currentIndex = (currentIndex + 1) % webcamURLs.length;
-    }
+    // 3. Toon het volgende blok van 4 webcams
+    function showNextBatch() {
+      if (webcamURLs.length === 0 || isSingleWebcamZoomed) return;
 
-    // 4. Initieer gegevens bij het laden van de pagina
-    async function init() {
-      await loadConfig();
-      await loadWebcamList();
-      
-      // Update de tekst in de overlay met de opgehaalde interval en aantal cams
-      infoText.textContent = `Rotatietijd: ${intervalInSeconds} seconden | Webcams geladen: ${webcamURLs.length}`;
-    }
-
-    // 5. Start de carrousel en activeer Native Fullscreen
-    function startApp() {
-      // Verberg de overlay
-      overlay.style.display = 'none';
-
-      // Vraag native browser fullscreen aan
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(() => {});
-      } else if (elem.webkitRequestFullscreen) { /* Safari / iOS */
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) { /* IE11 */
-        elem.msRequestFullscreen();
+      for (let i = 0; i < 4; i++) {
+        const urlIndex = currentBatchIndex + i;
+        
+        if (urlIndex < webcamURLs.length) {
+          frames[i].src = webcamURLs[urlIndex];
+          wrappers[i].style.visibility = 'visible';
+        } else {
+          frames[i].src = 'about:blank';
+          wrappers[i].style.visibility = 'hidden';
+        }
       }
 
-      if (webcamURLs.length > 0) {
-        showNextWebcam();
-        timerId = setInterval(showNextWebcam, intervalInSeconds * 1000);
-      } else {
-        alert("Geen geldige URL's gevonden in webcams.list!");
+      currentBatchIndex += 4;
+      if (currentBatchIndex >= webcamURLs.length) {
+        currentBatchIndex = 0;
       }
     }
 
-    // Voer de initialisatie direct uit
-    init();
-  </script>
+    // 4. Zoom in op één webcam
+    function openFullscreenWebcam(index) {
+      if (!frames[index].src || frames[index].src === 'about:blank') return;
 
-</body>
-</html>
+      // Stop de automatische rotatie
+      clearInterval(timerId);
+      isSingleWebcamZoomed = true;
+      activeZoomedIndex = index;
+
+      // Vergroot de gekozen wrapper naar schermvullend
+      wrappers[index].classList.add('fullscreen-active');
+      backButton.style.display = 'block';
+      backButton.focus();
+    }
+
+    // 5. Sluit de ingezoomde webcam en hervat de carrousel
+    function closeFullscreenWebcam() {
+      if (!isSingleWebcamZoomed) return;
+
+      if (activeZoomedIndex !== null) {
+        wrappers[activeZoomedIndex].classList.remove('fullscreen-active');
+      }
+
+      backButton.style.display = 'none';
+      isSingleWebcamZoomed = false;
+      activeZoomedIndex = null;
+
+      // Herstart de timer/rotatie
+      timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
+    }
+
+    // Luister naar de Back / Escape toetsen (handig voor toetsenbord en TV-afstandsbediening)
+    window.addEventListener('keydown', (e) => {
+      if (isSingleWebcamZoomed && (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'GoBack
