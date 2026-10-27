@@ -40,9 +40,8 @@
       height: 100%;
       border: none;
       display: block;
-      pointer-events: none; /* Zorgt dat de wrapper de klik opvangt */
+      pointer-events: none;
     }
-    /* Klikbare transparante laag over de iframe om de klik betrouwbaar te vangen */
     .click-overlay {
       position: absolute;
       top: 0;
@@ -52,7 +51,6 @@
       cursor: pointer;
       z-index: 10;
     }
-    /* Stijl wanneer één frame is uitgezoomd naar fullscreen */
     .iframe-wrapper.fullscreen-active {
       position: fixed;
       top: 0;
@@ -62,13 +60,12 @@
       z-index: 9000;
     }
     .iframe-wrapper.fullscreen-active iframe {
-      pointer-events: auto; /* Maak interactie in de webcam zelf weer mogelijk indien gewenst */
+      pointer-events: auto;
     }
     .iframe-wrapper.fullscreen-active .click-overlay {
-      display: none; /* Verberg de klik-overlay in zoom stand */
+      display: none;
     }
 
-    /* Terugknop bij schermafbeelding op volledig scherm */
     #back-button {
       display: none;
       position: fixed;
@@ -84,16 +81,13 @@
       border-radius: 8px;
       cursor: pointer;
       box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-      transition: background 0.2s, transform 0.1s;
     }
     #back-button:hover, #back-button:focus {
       background: #00d2ff;
       color: #000;
-      transform: scale(1.05);
       outline: none;
     }
 
-    /* Klikbaar overlay om browservoorwaarden voor fullscreen te omzeilen */
     #start-overlay {
       position: absolute;
       top: 0;
@@ -123,6 +117,9 @@
       font-weight: bold;
       margin-top: 15px;
       font-size: 1.1em;
+    }
+    .error-msg {
+      color: #ff4d4d !important;
     }
   </style>
 </head>
@@ -157,11 +154,12 @@
 
   <script>
     let webcamURLs = [];
-    let intervalInSeconds = 5; // Standaard terugvalwaarde
+    let intervalInSeconds = 5;
     let currentBatchIndex = 0;
     let timerId = null;
     let isSingleWebcamZoomed = false;
     let activeZoomedIndex = null;
+    let isInitialized = false;
 
     const wrappers = [
       document.getElementById('wrapper0'),
@@ -179,7 +177,7 @@
     const infoText = document.getElementById('info-text');
     const backButton = document.getElementById('back-button');
 
-    // 1. Haal de rotatietijd op uit config.file (met cache-busting)
+    // 1. Haal de rotatietijd op uit config.file
     async function loadConfig() {
       try {
         const response = await fetch('config.file?t=' + new Date().getTime());
@@ -188,15 +186,16 @@
           const match = text.match(/rotating_time\s*=\s*(\d+)/i);
           if (match && match[1]) {
             intervalInSeconds = parseInt(match[1], 10);
-            console.log(`Rotatietijd ingesteld op ${intervalInSeconds} seconden.`);
           }
+        } else {
+          console.warn("config.file niet gevonden, gebruikt 5s.");
         }
       } catch (err) {
-        console.warn("Kon config.file niet laden, terugvallen op 5s:", err);
+        console.warn("Fout bij laden config.file:", err);
       }
     }
 
-    // 2. Haal de webcams op uit webcams.list (met cache-busting)
+    // 2. Haal de webcams op uit webcams.list
     async function loadWebcamList() {
       try {
         const response = await fetch('webcams.list?t=' + new Date().getTime());
@@ -206,9 +205,11 @@
             .split('\n')
             .map(line => line.trim())
             .filter(line => line.length > 0 && !line.startsWith('#'));
+        } else {
+          throw new Error("Bestand 'webcams.list' niet gevonden (404).");
         }
       } catch (err) {
-        console.error("Kon webcams.list niet laden:", err);
+        throw err;
       }
     }
 
@@ -218,7 +219,6 @@
 
       for (let i = 0; i < 4; i++) {
         const urlIndex = currentBatchIndex + i;
-        
         if (urlIndex < webcamURLs.length) {
           frames[i].src = webcamURLs[urlIndex];
           wrappers[i].style.visibility = 'visible';
@@ -237,34 +237,80 @@
     // 4. Zoom in op één webcam
     function openFullscreenWebcam(index) {
       if (!frames[index].src || frames[index].src === 'about:blank') return;
-
-      // Stop de automatische rotatie
       clearInterval(timerId);
       isSingleWebcamZoomed = true;
       activeZoomedIndex = index;
-
-      // Vergroot de gekozen wrapper naar schermvullend
       wrappers[index].classList.add('fullscreen-active');
       backButton.style.display = 'block';
       backButton.focus();
     }
 
-    // 5. Sluit de ingezoomde webcam en hervat de carrousel
+    // 5. Sluit de ingezoomde webcam
     function closeFullscreenWebcam() {
       if (!isSingleWebcamZoomed) return;
-
       if (activeZoomedIndex !== null) {
         wrappers[activeZoomedIndex].classList.remove('fullscreen-active');
       }
-
       backButton.style.display = 'none';
       isSingleWebcamZoomed = false;
       activeZoomedIndex = null;
-
-      // Herstart de timer/rotatie
       timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
     }
 
-    // Luister naar de Back / Escape toetsen (handig voor toetsenbord en TV-afstandsbediening)
     window.addEventListener('keydown', (e) => {
-      if (isSingleWebcamZoomed && (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'GoBack
+      if (isSingleWebcamZoomed && (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'GoBack')) {
+        closeFullscreenWebcam();
+      }
+    });
+
+    // 6. Initieer gegevens
+    async function init() {
+      try {
+        await loadConfig();
+        await loadWebcamList();
+        
+        if (webcamURLs.length === 0) {
+          infoText.textContent = "Geen URL's gevonden in webcams.list!";
+          infoText.classList.add('error-msg');
+          return;
+        }
+
+        const totaalSchermen = Math.ceil(webcamURLs.length / 4);
+        infoText.textContent = `Rotatietijd: ${intervalInSeconds}s | Webcams geladen: ${webcamURLs.length} (${totaalSchermen} ${totaalSchermen === 1 ? 'scherm' : 'schermen'})`;
+        isInitialized = true;
+      } catch (err) {
+        infoText.textContent = `Fout: ${err.message || 'Kon gegevens niet laden.'}`;
+        infoText.classList.add('error-msg');
+      }
+    }
+
+    // 7. Start de app
+    function startApp() {
+      if (!isInitialized) {
+        // Als het laden nog bezig was of mislukte, probeer opnieuw te initiëren
+        init().then(() => {
+          if (isInitialized) startApp();
+        });
+        return;
+      }
+
+      overlay.style.display = 'none';
+
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+
+      showNextBatch();
+      timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
+    }
+
+    init();
+  </script>
+
+</body>
+</html>
