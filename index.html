@@ -72,7 +72,7 @@
       top: 20px;
       left: 20px;
       z-index: 9999;
-      background: rgba(0, 0, 0, 0.8);
+      background: rgba(0, 0, 0, 0.85);
       color: #fff;
       border: 2px solid #00d2ff;
       padding: 12px 24px;
@@ -94,7 +94,7 @@
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.9);
+      background: rgba(0, 0, 0, 0.92);
       color: #fff;
       display: flex;
       flex-direction: column;
@@ -107,6 +107,7 @@
     }
     #start-overlay h1 {
       margin-bottom: 10px;
+      font-size: 2em;
     }
     #start-overlay p {
       color: #aaa;
@@ -115,11 +116,8 @@
     #info-text {
       color: #00d2ff;
       font-weight: bold;
-      margin-top: 15px;
+      margin-top: 20px;
       font-size: 1.1em;
-    }
-    .error-msg {
-      color: #ff4d4d !important;
     }
   </style>
 </head>
@@ -159,7 +157,7 @@
     let timerId = null;
     let isSingleWebcamZoomed = false;
     let activeZoomedIndex = null;
-    let isInitialized = false;
+    let initPromise = null;
 
     const wrappers = [
       document.getElementById('wrapper0'),
@@ -177,43 +175,53 @@
     const infoText = document.getElementById('info-text');
     const backButton = document.getElementById('back-button');
 
-    // 1. Haal de rotatietijd op uit config.file
+    // 1. Vraag native browser fullscreen direct aan (synchroon in de click-context)
+    function requestNativeFullscreen() {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    }
+
+    // 2. Haal de rotatietijd op uit config.file
     async function loadConfig() {
       try {
-        const response = await fetch('config.file?t=' + new Date().getTime());
+        const response = await fetch('config.file?t=' + Date.now());
         if (response.ok) {
           const text = await response.text();
           const match = text.match(/rotating_time\s*=\s*(\d+)/i);
           if (match && match[1]) {
             intervalInSeconds = parseInt(match[1], 10);
           }
-        } else {
-          console.warn("config.file niet gevonden, gebruikt 5s.");
         }
       } catch (err) {
-        console.warn("Fout bij laden config.file:", err);
+        console.warn("Kon config.file niet laden, terugvallen op 5s:", err);
       }
     }
 
-    // 2. Haal de webcams op uit webcams.list
+    // 3. Haal de webcams op uit webcams.list (afhandeling van alle regeleinden)
     async function loadWebcamList() {
       try {
-        const response = await fetch('webcams.list?t=' + new Date().getTime());
+        const response = await fetch('webcams.list?t=' + Date.now());
         if (response.ok) {
           const text = await response.text();
           webcamURLs = text
-            .split('\n')
+            .split(/\r?\n/)
             .map(line => line.trim())
             .filter(line => line.length > 0 && !line.startsWith('#'));
         } else {
-          throw new Error("Bestand 'webcams.list' niet gevonden (404).");
+          console.error("webcams.list kon niet worden geladen (HTTP " + response.status + ").");
         }
       } catch (err) {
-        throw err;
+        console.error("Fout bij laden van webcams.list:", err);
       }
     }
 
-    // 3. Toon het volgende blok van 4 webcams
+    // 4. Toon het volgende blok van 4 webcams
     function showNextBatch() {
       if (webcamURLs.length === 0 || isSingleWebcamZoomed) return;
 
@@ -234,10 +242,10 @@
       }
     }
 
-    // 4. Zoom in op één webcam
+    // 5. Zoom in op één webcam
     function openFullscreenWebcam(index) {
       if (!frames[index].src || frames[index].src === 'about:blank') return;
-      clearInterval(timerId);
+      if (timerId) clearInterval(timerId);
       isSingleWebcamZoomed = true;
       activeZoomedIndex = index;
       wrappers[index].classList.add('fullscreen-active');
@@ -245,7 +253,7 @@
       backButton.focus();
     }
 
-    // 5. Sluit de ingezoomde webcam
+    // 6. Sluit de ingezoomde webcam
     function closeFullscreenWebcam() {
       if (!isSingleWebcamZoomed) return;
       if (activeZoomedIndex !== null) {
@@ -254,6 +262,7 @@
       backButton.style.display = 'none';
       isSingleWebcamZoomed = false;
       activeZoomedIndex = null;
+      showNextBatch();
       timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
     }
 
@@ -263,53 +272,45 @@
       }
     });
 
-    // 6. Initieer gegevens
+    // 7. Initieer gegevens bij het laden
     async function init() {
-      try {
-        await loadConfig();
-        await loadWebcamList();
-        
-        if (webcamURLs.length === 0) {
-          infoText.textContent = "Geen URL's gevonden in webcams.list!";
-          infoText.classList.add('error-msg');
-          return;
-        }
+      await loadConfig();
+      await loadWebcamList();
 
+      if (webcamURLs.length === 0) {
+        infoText.innerHTML = "<span style='color:#ff4d4d;'>Geen webcam URL's gevonden!</span><br><small style='color:#aaa;'>Controleer 'webcams.list' in je GitHub repo.</small>";
+      } else {
         const totaalSchermen = Math.ceil(webcamURLs.length / 4);
         infoText.textContent = `Rotatietijd: ${intervalInSeconds}s | Webcams geladen: ${webcamURLs.length} (${totaalSchermen} ${totaalSchermen === 1 ? 'scherm' : 'schermen'})`;
-        isInitialized = true;
-      } catch (err) {
-        infoText.textContent = `Fout: ${err.message || 'Kon gegevens niet laden.'}`;
-        infoText.classList.add('error-msg');
       }
     }
 
-    // 7. Start de app
-    function startApp() {
-      if (!isInitialized) {
-        // Als het laden nog bezig was of mislukte, probeer opnieuw te initiëren
-        init().then(() => {
-          if (isInitialized) startApp();
-        });
+    // 8. Start de app wanneer op het startscherm wordt geklikt
+    async function startApp() {
+      // Synchroon direct in het klik-event de fullscreen aanvragen!
+      requestNativeFullscreen();
+
+      // Wacht eventueel tot de init klaar is (als de gebruiker direct klikt)
+      if (initPromise) {
+        await initPromise;
+      }
+
+      if (webcamURLs.length === 0) {
+        alert("Kan niet starten: geen geldige URL's geladen uit 'webcams.list'. Controleer je GitHub repository.");
         return;
       }
 
+      // Verberg het startscherm
       overlay.style.display = 'none';
 
-      const elem = document.documentElement;
-      if (elem.requestFullscreen) {
-        elem.requestFullscreen().catch(() => {});
-      } else if (elem.webkitRequestFullscreen) {
-        elem.webkitRequestFullscreen();
-      } else if (elem.msRequestFullscreen) {
-        elem.msRequestFullscreen();
-      }
-
+      // Start direct de eerste batch en de timer
       showNextBatch();
+      if (timerId) clearInterval(timerId);
       timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
     }
 
-    init();
+    // Start de init bij het laden van de pagina
+    initPromise = init();
   </script>
 
 </body>
