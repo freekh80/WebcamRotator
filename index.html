@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Webcam Carrousel (2x2 met Zoom)</title>
+  <title>Webcam Carrousel</title>
   <style>
     * {
       margin: 0;
@@ -17,7 +17,7 @@
       overflow: hidden;
       font-family: sans-serif;
     }
-    /* 2x2 Grid Layout */
+    /* Dynamische Grid Layout (wordt via JS ingesteld op basis van config.file) */
     #grid-container {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -125,11 +125,11 @@
 
   <div id="start-overlay" onclick="startApp()">
     <h1>Klik / Tik om te starten</h1>
-    <p>Dit activeert de 2x2 webcam carrousel op volledig scherm</p>
+    <p>Dit activeert de webcam carrousel op volledig scherm</p>
     <p id="info-text">Instellingen laden...</p>
   </div>
 
-  <button id="back-button" onclick="closeFullscreenWebcam()">← Terug</button>
+  <button id="back-button" onclick="closeFullscreenWebcam()">← Terug naar overzicht</button>
 
   <div id="grid-container">
     <div class="iframe-wrapper" id="wrapper0">
@@ -153,12 +153,14 @@
   <script>
     let webcamURLs = [];
     let intervalInSeconds = 5;
+    let gridSize = 4; // Standaard 4 (waarde 1 t/m 4 uit config.file)
     let currentBatchIndex = 0;
     let timerId = null;
     let isSingleWebcamZoomed = false;
     let activeZoomedIndex = null;
     let initPromise = null;
 
+    const gridContainer = document.getElementById('grid-container');
     const wrappers = [
       document.getElementById('wrapper0'),
       document.getElementById('wrapper1'),
@@ -187,23 +189,59 @@
       }
     }
 
-    // 2. Haal de rotatietijd op uit config.file
+    // 2. Haal rotating_time en grid op uit config.file
     async function loadConfig() {
       try {
         const response = await fetch('config.file?t=' + Date.now());
         if (response.ok) {
           const text = await response.text();
-          const match = text.match(/rotating_time\s*=\s*(\d+)/i);
-          if (match && match[1]) {
-            intervalInSeconds = parseInt(match[1], 10);
+          
+          const timeMatch = text.match(/rotating_time\s*=\s*(\d+)/i);
+          if (timeMatch && timeMatch[1]) {
+            intervalInSeconds = parseInt(timeMatch[1], 10);
+          }
+
+          const gridMatch = text.match(/grid\s*=\s*(\d+)/i);
+          if (gridMatch && gridMatch[1]) {
+            const parsedGrid = parseInt(gridMatch[1], 10);
+            // Beperk de waarde tot minimaal 1 en maximaal 4
+            gridSize = Math.min(4, Math.max(1, parsedGrid));
           }
         }
       } catch (err) {
-        console.warn("Kon config.file niet laden, terugvallen op 5s:", err);
+        console.warn("Kon config.file niet laden, gebruikt standaardwaarden:", err);
       }
     }
 
-    // 3. Haal de webcams op uit webcams.list (afhandeling van alle regeleinden)
+    // 3. Pas de CSS Grid indeling aan op basis van gridSize (1 t/m 4)
+    function applyGridLayout() {
+      if (gridSize === 1) {
+        gridContainer.style.gridTemplateColumns = '1fr';
+        gridContainer.style.gridTemplateRows = '1fr';
+        gridContainer.style.gap = '0px';
+      } else if (gridSize === 2) {
+        gridContainer.style.gridTemplateColumns = '1fr 1fr';
+        gridContainer.style.gridTemplateRows = '1fr';
+        gridContainer.style.gap = '2px';
+      } else {
+        // Voor grid = 3 en grid = 4: 2x2 indeling zodat alle vakken even groot zijn
+        gridContainer.style.gridTemplateColumns = '1fr 1fr';
+        gridContainer.style.gridTemplateRows = '1fr 1fr';
+        gridContainer.style.gap = '2px';
+      }
+
+      // Verberg overbodige wrappers volledig uit het grid
+      for (let i = 0; i < 4; i++) {
+        if (i < gridSize) {
+          wrappers[i].style.display = 'block';
+        } else {
+          wrappers[i].style.display = 'none';
+          frames[i].src = 'about:blank';
+        }
+      }
+    }
+
+    // 4. Haal de webcams op uit webcams.list
     async function loadWebcamList() {
       try {
         const response = await fetch('webcams.list?t=' + Date.now());
@@ -221,11 +259,11 @@
       }
     }
 
-    // 4. Toon het volgende blok van 4 webcams
+    // 5. Toon het volgende blok van 'gridSize' webcams
     function showNextBatch() {
       if (webcamURLs.length === 0 || isSingleWebcamZoomed) return;
 
-      for (let i = 0; i < 4; i++) {
+      for (let i = 0; i < gridSize; i++) {
         const urlIndex = currentBatchIndex + i;
         if (urlIndex < webcamURLs.length) {
           frames[i].src = webcamURLs[urlIndex];
@@ -236,13 +274,13 @@
         }
       }
 
-      currentBatchIndex += 4;
+      currentBatchIndex += gridSize;
       if (currentBatchIndex >= webcamURLs.length) {
         currentBatchIndex = 0;
       }
     }
 
-    // 5. Zoom in op één webcam
+    // 6. Zoom in op één webcam (pauzeert rotatie)
     function openFullscreenWebcam(index) {
       if (!frames[index].src || frames[index].src === 'about:blank') return;
       if (timerId) clearInterval(timerId);
@@ -253,7 +291,7 @@
       backButton.focus();
     }
 
-    // 6. Sluit de ingezoomde webcam
+    // 7. Sluit de ingezoomde webcam en hervat de rotatie op het huidige scherm
     function closeFullscreenWebcam() {
       if (!isSingleWebcamZoomed) return;
       if (activeZoomedIndex !== null) {
@@ -262,7 +300,6 @@
       backButton.style.display = 'none';
       isSingleWebcamZoomed = false;
       activeZoomedIndex = null;
-      showNextBatch();
       timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
     }
 
@@ -272,25 +309,24 @@
       }
     });
 
-    // 7. Initieer gegevens bij het laden
+    // 8. Initieer gegevens bij het laden
     async function init() {
       await loadConfig();
+      applyGridLayout();
       await loadWebcamList();
 
       if (webcamURLs.length === 0) {
         infoText.innerHTML = "<span style='color:#ff4d4d;'>Geen webcam URL's gevonden!</span><br><small style='color:#aaa;'>Controleer 'webcams.list' in je GitHub repo.</small>";
       } else {
-        const totaalSchermen = Math.ceil(webcamURLs.length / 4);
-        infoText.textContent = `Rotatietijd: ${intervalInSeconds}s | Webcams geladen: ${webcamURLs.length} (${totaalSchermen} ${totaalSchermen === 1 ? 'scherm' : 'schermen'})`;
+        const totaalSchermen = Math.ceil(webcamURLs.length / gridSize);
+        infoText.textContent = `Grid: ${gridSize} | Rotatietijd: ${intervalInSeconds}s | Webcams: ${webcamURLs.length} (${totaalSchermen} ${totaalSchermen === 1 ? 'scherm' : 'schermen'})`;
       }
     }
 
-    // 8. Start de app wanneer op het startscherm wordt geklikt
+    // 9. Start de app wanneer op het startscherm wordt geklikt
     async function startApp() {
-      // Synchroon direct in het klik-event de fullscreen aanvragen!
       requestNativeFullscreen();
 
-      // Wacht eventueel tot de init klaar is (als de gebruiker direct klikt)
       if (initPromise) {
         await initPromise;
       }
@@ -300,16 +336,13 @@
         return;
       }
 
-      // Verberg het startscherm
       overlay.style.display = 'none';
 
-      // Start direct de eerste batch en de timer
       showNextBatch();
       if (timerId) clearInterval(timerId);
       timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
     }
 
-    // Start de init bij het laden van de pagina
     initPromise = init();
   </script>
 
