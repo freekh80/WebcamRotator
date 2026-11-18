@@ -13,12 +13,11 @@
     html, body {
       width: 100%;
       height: 100%;
-      background-color: #000;
+      background-color: #0b0d12;
       overflow: hidden;
       font-family: sans-serif;
     }
 
-    /* Twee identieke grid-lagen over elkaar voor naadloos voorladen (double buffering) */
     .grid-layer {
       position: fixed;
       top: 0;
@@ -30,7 +29,7 @@
       opacity: 0;
       z-index: 1;
       pointer-events: none;
-      transition: opacity 0.5s ease-in-out;
+      transition: opacity 0.4s ease-in-out;
     }
     .grid-layer.active {
       opacity: 1;
@@ -49,15 +48,14 @@
       overflow: hidden;
     }
 
-    /* Compact label boven in beeld met de naam van de webcam */
     .webcam-label {
       position: absolute;
       top: 8px;
       left: 50%;
       transform: translateX(-50%);
       z-index: 15;
-      background: rgba(0, 0, 0, 0.62);
-      color: rgba(255, 255, 255, 0.92);
+      background: rgba(0, 0, 0, 0.72);
+      color: #f2f5f8;
       padding: 4px 12px;
       border-radius: 999px;
       font-size: 13px;
@@ -68,8 +66,7 @@
       text-overflow: ellipsis;
       max-width: calc(100% - 24px);
       pointer-events: none;
-      backdrop-filter: blur(4px);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.16);
     }
     .iframe-wrapper.fullscreen-active .webcam-label {
       top: 22px;
@@ -78,13 +75,11 @@
       max-width: calc(100% - 440px);
     }
 
-    /* Duidelijke selectierand voor navigatie met de Google TV-afstandsbediening */
     .iframe-wrapper.selected::after {
       content: "";
       position: absolute;
       inset: 0;
       border: 4px solid #00d2ff;
-      box-shadow: inset 0 0 18px rgba(0, 210, 255, 0.55);
       pointer-events: none;
       z-index: 20;
     }
@@ -109,7 +104,6 @@
       z-index: 10;
     }
 
-    /* Fullscreen zoom voor één specifieke webcam */
     .iframe-wrapper.fullscreen-active {
       position: fixed;
       top: 0;
@@ -139,7 +133,6 @@
       font-weight: bold;
       border-radius: 8px;
       cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.5);
     }
     #back-button:hover, #back-button:focus {
       background: #00d2ff;
@@ -147,4 +140,742 @@
       outline: none;
     }
 
-    /* Subtiele statusmelding
+    #update-toast {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9998;
+      background: rgba(0, 0, 0, 0.85);
+      color: #00d2ff;
+      border: 1px solid #00d2ff;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: bold;
+      border-radius: 6px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease-in-out;
+    }
+    #update-toast.visible {
+      opacity: 1;
+    }
+
+    #start-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: #0b0d12;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      z-index: 99999;
+      text-align: center;
+      padding: 20px;
+      outline: none;
+    }
+    .start-box {
+      border: 1px solid rgba(0, 210, 255, 0.35);
+      background: rgba(255, 255, 255, 0.04);
+      padding: 36px 48px;
+      border-radius: 16px;
+      max-width: 640px;
+    }
+    .start-box h1 {
+      margin-bottom: 12px;
+      font-size: 1.8em;
+    }
+    .start-box p {
+      color: #bbb;
+      margin-top: 6px;
+    }
+    #info-text {
+      color: #00d2ff;
+      font-weight: bold;
+      margin-top: 20px;
+      font-size: 1.1em;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="start-overlay" tabindex="0" onclick="startApp()">
+    <div class="start-box">
+      <h1>Klik / Tik of druk op OK om te starten</h1>
+      <p>Dit activeert de webcam carrousel op volledig scherm</p>
+      <p id="info-text">Instellingen laden...</p>
+    </div>
+  </div>
+
+  <button id="back-button" onclick="closeFullscreenWebcam()">← Terug naar overzicht</button>
+  <div id="update-toast"></div>
+
+  <div id="grid0" class="grid-layer active">
+    <div class="iframe-wrapper" id="grid0-wrapper0">
+      <div class="webcam-label" id="grid0-label0"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 0)"></div>
+      <iframe id="grid0-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid0-wrapper1">
+      <div class="webcam-label" id="grid0-label1"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 1)"></div>
+      <iframe id="grid0-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid0-wrapper2">
+      <div class="webcam-label" id="grid0-label2"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 2)"></div>
+      <iframe id="grid0-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid0-wrapper3">
+      <div class="webcam-label" id="grid0-label3"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 3)"></div>
+      <iframe id="grid0-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+  </div>
+
+  <div id="grid1" class="grid-layer">
+    <div class="iframe-wrapper" id="grid1-wrapper0">
+      <div class="webcam-label" id="grid1-label0"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 0)"></div>
+      <iframe id="grid1-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid1-wrapper1">
+      <div class="webcam-label" id="grid1-label1"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 1)"></div>
+      <iframe id="grid1-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid1-wrapper2">
+      <div class="webcam-label" id="grid1-label2"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 2)"></div>
+      <iframe id="grid1-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid1-wrapper3">
+      <div class="webcam-label" id="grid1-label3"></div>
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 3)"></div>
+      <iframe id="grid1-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+  </div>
+
+  <script>
+    let webcamItems = [];
+    let intervalInSeconds = 5;
+    let gridSize = 4;
+    let checkIntervalInSeconds = 120;
+
+    let activeBuffer = 0;
+    let currentBatchStart = 0;
+    let selectedCellIndex = 0;
+    let bufferLoadedStart = [-1, -1];
+
+    let timerId = null;
+    let preloadTimeoutId = null;
+    let cleanupTimeoutId = null;
+    let syncTimerId = null;
+    let toastTimeoutId = null;
+
+    let isStarted = false;
+    let isSingleWebcamZoomed = false;
+    let zoomedBuffer = null;
+    let zoomedCell = null;
+    let pendingUpdate = null;
+    let initPromise = null;
+
+    const grids = [
+      document.getElementById('grid0'),
+      document.getElementById('grid1')
+    ];
+
+    const wrappers = [
+      [0, 1, 2, 3].map(i => document.getElementById('grid0-wrapper' + i)),
+      [0, 1, 2, 3].map(i => document.getElementById('grid1-wrapper' + i))
+    ];
+
+    const labels = [
+      [0, 1, 2, 3].map(i => document.getElementById('grid0-label' + i)),
+      [0, 1, 2, 3].map(i => document.getElementById('grid1-label' + i))
+    ];
+
+    const frames = [
+      [0, 1, 2, 3].map(i => document.getElementById('grid0-frame' + i)),
+      [0, 1, 2, 3].map(i => document.getElementById('grid1-frame' + i))
+    ];
+
+    const overlay = document.getElementById('start-overlay');
+    const infoText = document.getElementById('info-text');
+    const backButton = document.getElementById('back-button');
+    const updateToast = document.getElementById('update-toast');
+
+    function formatSlug(text) {
+      return text
+        .replace(/[-_+]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .split(' ')
+        .map(w => w ? w.charAt(0).toUpperCase() + w.slice(1).toLowerCase() : '')
+        .join(' ');
+    }
+
+    function isGenericOrId(segment) {
+      const lower = segment.toLowerCase();
+      const generic = [
+        'webcam', 'webcams', 'cam', 'cams', 'camera', 'cameras',
+        'live', 'livecam', 'livecams', 'stream', 'streams', 'embed',
+        'player', 'view', 'viewer', 'watch', 'video', 'videos',
+        'index', 'home', 'default', 'main', 'public', 'media',
+        'image', 'images', 'img', 'snap', 'snapshot', 'latest',
+        'current', 'full', 'hd', '4k', 'nl', 'en', 'fr', 'de', 'it', 'es',
+        'hiver', 'winter', 'ete', 'summer', 'ski', 'station', 'resort',
+        'webtv', 'panomax', 'skaping', 'feratel', 'bergfex', 'roundshot',
+        'foto-webcam', 'youtube', 'youtu'
+      ];
+      if (generic.includes(lower)) return true;
+      if (/^(c|cam|id)?\d+$/.test(lower)) return true;
+      if (lower.length >= 7 && /^[a-z0-9]+$/.test(lower) && /\d/.test(lower)) return true;
+      return false;
+    }
+
+    function extractWebcamName(rawUrl) {
+      try {
+        const urlObj = new URL(rawUrl);
+
+        const pathParts = urlObj.pathname
+          .split('/')
+          .map(seg => {
+            try { return decodeURIComponent(seg); } catch (e) { return seg; }
+          })
+          .map(seg => seg.replace(/\.(html?|php|aspx?|jsp|jpe?g|png|m3u8|mp4)$/i, '').trim())
+          .filter(seg => seg.length > 1 && !isGenericOrId(seg));
+
+        if (pathParts.length > 0) {
+          const relevant = pathParts.slice(-2).map(formatSlug);
+          if (relevant.length === 2 && relevant[0].toLowerCase() === relevant[1].toLowerCase()) {
+            return relevant[0];
+          }
+          return relevant.join(' - ');
+        }
+
+        const queryKeys = ['name', 'title', 'cam', 'webcam', 'location', 'station', 'resort'];
+        for (const key of queryKeys) {
+          const val = urlObj.searchParams.get(key);
+          if (val && val.length > 1 && !isGenericOrId(val)) {
+            return formatSlug(val);
+          }
+        }
+
+        const hostParts = urlObj.hostname
+          .replace(/^www\./i, '')
+          .split('.')
+          .filter(part => part.length > 2 && !isGenericOrId(part));
+
+        if (hostParts.length > 0) {
+          return formatSlug(hostParts[0]);
+        }
+      } catch (e) {}
+
+      return 'Webcam';
+    }
+
+    function parseWebcamLine(line) {
+      const pipeIndex = line.indexOf('|');
+      if (pipeIndex !== -1) {
+        const urlPart = line.slice(0, pipeIndex).trim();
+        const customName = line.slice(pipeIndex + 1).trim();
+        return {
+          url: urlPart,
+          name: customName || extractWebcamName(urlPart)
+        };
+      }
+      return {
+        url: line,
+        name: extractWebcamName(line)
+      };
+    }
+
+    function requestNativeFullscreen() {
+      const elem = document.documentElement;
+      if (elem.requestFullscreen) {
+        elem.requestFullscreen().catch(() => {});
+      } else if (elem.webkitRequestFullscreen) {
+        elem.webkitRequestFullscreen();
+      } else if (elem.msRequestFullscreen) {
+        elem.msRequestFullscreen();
+      }
+    }
+
+    function showToast(message) {
+      updateToast.textContent = message;
+      updateToast.classList.add('visible');
+      if (toastTimeoutId) clearTimeout(toastTimeoutId);
+      toastTimeoutId = setTimeout(() => {
+        updateToast.classList.remove('visible');
+      }, 3500);
+    }
+
+    function itemsEqual(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i].url !== b[i].url || a[i].name !== b[i].name) return false;
+      }
+      return true;
+    }
+
+    async function fetchRemoteData() {
+      let newInterval = intervalInSeconds;
+      let newGrid = gridSize;
+      let newCheckInterval = checkIntervalInSeconds;
+      let newItems = null;
+
+      try {
+        const configResp = await fetch('config.file?t=' + Date.now());
+        if (configResp.ok) {
+          const text = await configResp.text();
+
+          const timeMatch = text.match(/rotating_time\s*=\s*(\d+)/i);
+          if (timeMatch && timeMatch[1]) {
+            newInterval = Math.max(1, parseInt(timeMatch[1], 10));
+          }
+
+          const gridMatch = text.match(/grid\s*=\s*(\d+)/i);
+          if (gridMatch && gridMatch[1]) {
+            newGrid = Math.min(4, Math.max(1, parseInt(gridMatch[1], 10)));
+          }
+
+          const checkMatch = text.match(/check_interval\s*=\s*(\d+)/i);
+          if (checkMatch && checkMatch[1]) {
+            newCheckInterval = Math.max(15, parseInt(checkMatch[1], 10));
+          }
+        }
+      } catch (err) {
+        console.warn("Kon config.file niet ophalen:", err);
+      }
+
+      try {
+        const listResp = await fetch('webcams.list?t=' + Date.now());
+        if (listResp.ok) {
+          const text = await listResp.text();
+          newItems = text
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(line => line.length > 0 && !line.startsWith('#'))
+            .map(parseWebcamLine);
+        }
+      } catch (err) {
+        console.warn("Kon webcams.list niet ophalen:", err);
+      }
+
+      return { newInterval, newGrid, newCheckInterval, newItems };
+    }
+
+    function applyGridLayout() {
+      grids.forEach((grid, b) => {
+        if (gridSize === 1) {
+          grid.style.gridTemplateColumns = '1fr';
+          grid.style.gridTemplateRows = '1fr';
+          grid.style.gap = '0px';
+        } else if (gridSize === 2) {
+          grid.style.gridTemplateColumns = '1fr 1fr';
+          grid.style.gridTemplateRows = '1fr';
+          grid.style.gap = '2px';
+        } else {
+          grid.style.gridTemplateColumns = '1fr 1fr';
+          grid.style.gridTemplateRows = '1fr 1fr';
+          grid.style.gap = '2px';
+        }
+
+        for (let i = 0; i < 4; i++) {
+          if (i < gridSize) {
+            wrappers[b][i].style.display = 'block';
+          } else {
+            wrappers[b][i].style.display = 'none';
+            frames[b][i].src = 'about:blank';
+            labels[b][i].textContent = '';
+          }
+        }
+      });
+    }
+
+    function clearBuffer(bufIdx) {
+      bufferLoadedStart[bufIdx] = -1;
+      for (let i = 0; i < 4; i++) {
+        frames[bufIdx][i].src = 'about:blank';
+        labels[bufIdx][i].textContent = '';
+      }
+    }
+
+    function getVisibleCountOnScreen(batchStart) {
+      if (webcamItems.length === 0) return 0;
+      return Math.min(gridSize, Math.max(0, webcamItems.length - batchStart));
+    }
+
+    function getNextBatchStart(fromIndex) {
+      const next = fromIndex + gridSize;
+      return next >= webcamItems.length ? 0 : next;
+    }
+
+    function getPrevBatchStart(fromIndex) {
+      if (webcamItems.length === 0) return 0;
+      if (fromIndex > 0) {
+        return Math.max(0, fromIndex - gridSize);
+      }
+      return Math.floor((webcamItems.length - 1) / gridSize) * gridSize;
+    }
+
+    function updateSelectionHighlight() {
+      const visibleCount = getVisibleCountOnScreen(currentBatchStart);
+      if (visibleCount === 0) return;
+
+      if (selectedCellIndex >= visibleCount) selectedCellIndex = visibleCount - 1;
+      if (selectedCellIndex < 0) selectedCellIndex = 0;
+
+      for (let b = 0; b < 2; b++) {
+        for (let i = 0; i < 4; i++) {
+          if (b === activeBuffer && i === selectedCellIndex && !isSingleWebcamZoomed) {
+            wrappers[b][i].classList.add('selected');
+          } else {
+            wrappers[b][i].classList.remove('selected');
+          }
+        }
+      }
+    }
+
+    function loadBatchIntoBuffer(bufIdx, startIdx, force = false) {
+      if (!force && bufferLoadedStart[bufIdx] === startIdx) return;
+      bufferLoadedStart[bufIdx] = startIdx;
+
+      for (let i = 0; i < gridSize; i++) {
+        const itemIndex = startIdx + i;
+        if (itemIndex < webcamItems.length) {
+          frames[bufIdx][i].src = webcamItems[itemIndex].url;
+          labels[bufIdx][i].textContent = webcamItems[itemIndex].name;
+          labels[bufIdx][i].style.display = webcamItems[itemIndex].name ? 'block' : 'none';
+          wrappers[bufIdx][i].style.visibility = 'visible';
+        } else {
+          frames[bufIdx][i].src = 'about:blank';
+          labels[bufIdx][i].textContent = '';
+          labels[bufIdx][i].style.display = 'none';
+          wrappers[bufIdx][i].style.visibility = 'hidden';
+        }
+      }
+    }
+
+    function scheduleNextPreload() {
+      if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
+      if (webcamItems.length <= gridSize || isSingleWebcamZoomed) return;
+
+      // Laad de volgende batch pas 2,5s voor de wissel vooruit om geheugen op Google TV te sparen
+      const preloadDelayMs = Math.max(500, (intervalInSeconds - 2.5) * 1000);
+      const upcomingStart = getNextBatchStart(currentBatchStart);
+      const hiddenBuffer = 1 - activeBuffer;
+
+      preloadTimeoutId = setTimeout(() => {
+        if (!isSingleWebcamZoomed) {
+          loadBatchIntoBuffer(hiddenBuffer, upcomingStart);
+        }
+      }, preloadDelayMs);
+    }
+
+    function resetRotationTimer() {
+      if (timerId) clearInterval(timerId);
+      if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
+
+      if (webcamItems.length > gridSize && !isSingleWebcamZoomed) {
+        scheduleNextPreload();
+        timerId = setInterval(rotateToNextBatch, intervalInSeconds * 1000);
+      }
+    }
+
+    function switchToBatch(targetStart, newSelectedCell = 0) {
+      if (webcamItems.length === 0 || isSingleWebcamZoomed) return;
+
+      const oldBuffer = activeBuffer;
+      const nextBuffer = 1 - activeBuffer;
+
+      loadBatchIntoBuffer(nextBuffer, targetStart);
+
+      grids[nextBuffer].classList.add('active');
+      grids[oldBuffer].classList.remove('active');
+
+      activeBuffer = nextBuffer;
+      currentBatchStart = targetStart;
+      selectedCellIndex = newSelectedCell;
+      updateSelectionHighlight();
+
+      // Maak de oude buffer na de fade (500ms) direct leeg zodat videostreams geheugen vrijgeven
+      if (cleanupTimeoutId) clearTimeout(cleanupTimeoutId);
+      cleanupTimeoutId = setTimeout(() => {
+        if (!isSingleWebcamZoomed && activeBuffer !== oldBuffer) {
+          clearBuffer(oldBuffer);
+        }
+      }, 500);
+
+      scheduleNextPreload();
+    }
+
+    function rotateToNextBatch() {
+      if (webcamItems.length <= gridSize || isSingleWebcamZoomed) return;
+      const nextStart = getNextBatchStart(currentBatchStart);
+      switchToBatch(nextStart, 0);
+    }
+
+    function applyUpdate(data) {
+      const checkIntervalChanged = data.newCheckInterval !== checkIntervalInSeconds;
+
+      intervalInSeconds = data.newInterval;
+      gridSize = data.newGrid;
+      checkIntervalInSeconds = data.newCheckInterval;
+      webcamItems = data.newItems;
+
+      if (timerId) clearInterval(timerId);
+      if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
+      if (cleanupTimeoutId) clearTimeout(cleanupTimeoutId);
+
+      clearBuffer(0);
+      clearBuffer(1);
+      applyGridLayout();
+
+      if (currentBatchStart >= webcamItems.length) {
+        currentBatchStart = 0;
+      }
+
+      const nextBuffer = 1 - activeBuffer;
+      loadBatchIntoBuffer(nextBuffer, currentBatchStart, true);
+      grids[nextBuffer].classList.add('active');
+      grids[activeBuffer].classList.remove('active');
+      activeBuffer = nextBuffer;
+      updateSelectionHighlight();
+
+      resetRotationTimer();
+
+      if (checkIntervalChanged) {
+        startBackgroundSync();
+      }
+
+      showToast("Webcams & instellingen bijgewerkt");
+    }
+
+    async function checkForUpdates() {
+      const data = await fetchRemoteData();
+      if (!data.newItems || data.newItems.length === 0) return;
+
+      const hasChanged =
+        data.newInterval !== intervalInSeconds ||
+        data.newGrid !== gridSize ||
+        data.newCheckInterval !== checkIntervalInSeconds ||
+        !itemsEqual(data.newItems, webcamItems);
+
+      if (!hasChanged) return;
+
+      if (isSingleWebcamZoomed) {
+        pendingUpdate = data;
+        showToast("Update beschikbaar (wordt actief na sluiten zoom)");
+      } else {
+        applyUpdate(data);
+      }
+    }
+
+    function startBackgroundSync() {
+      if (syncTimerId) clearInterval(syncTimerId);
+      syncTimerId = setInterval(checkForUpdates, checkIntervalInSeconds * 1000);
+    }
+
+    function openFullscreenWebcam(bufIdx, cellIdx) {
+      if (bufIdx !== activeBuffer) return;
+      if (!frames[bufIdx][cellIdx].src || frames[bufIdx][cellIdx].src === 'about:blank') return;
+
+      if (timerId) clearInterval(timerId);
+      if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
+      clearBuffer(1 - activeBuffer);
+
+      selectedCellIndex = cellIdx;
+      isSingleWebcamZoomed = true;
+      zoomedBuffer = bufIdx;
+      zoomedCell = cellIdx;
+      updateSelectionHighlight();
+
+      grids[bufIdx].classList.add('zoom-container');
+      wrappers[bufIdx][cellIdx].classList.add('fullscreen-active');
+      backButton.style.display = 'block';
+      backButton.focus();
+
+      try {
+        history.pushState({ webcamZoom: true }, '');
+      } catch (e) {}
+    }
+
+    function closeFullscreenWebcam(fromPopState = false) {
+      if (!isSingleWebcamZoomed) return;
+
+      if (zoomedBuffer !== null && zoomedCell !== null) {
+        wrappers[zoomedBuffer][zoomedCell].classList.remove('fullscreen-active');
+        grids[zoomedBuffer].classList.remove('zoom-container');
+      }
+
+      backButton.style.display = 'none';
+      isSingleWebcamZoomed = false;
+      zoomedBuffer = null;
+      zoomedCell = null;
+      updateSelectionHighlight();
+
+      if (!fromPopState && history.state && history.state.webcamZoom) {
+        try {
+          history.back();
+        } catch (e) {}
+      }
+
+      if (pendingUpdate) {
+        const dataToApply = pendingUpdate;
+        pendingUpdate = null;
+        applyUpdate(dataToApply);
+        return;
+      }
+
+      resetRotationTimer();
+    }
+
+    window.addEventListener('popstate', () => {
+      if (isSingleWebcamZoomed) {
+        closeFullscreenWebcam(true);
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      const key = e.key;
+      const code = e.keyCode;
+
+      const isEnter = key === 'Enter' || key === ' ' || key === 'Select' || key === 'DPadCenter' || code === 13 || code === 23 || code === 32;
+      const isLeft  = key === 'ArrowLeft'  || code === 37 || code === 21;
+      const isRight = key === 'ArrowRight' || code === 39 || code === 22;
+      const isUp    = key === 'ArrowUp'    || code === 38 || code === 19;
+      const isDown  = key === 'ArrowDown'  || code === 40 || code === 20;
+      const isBack  = key === 'Escape' || key === 'Backspace' || key === 'GoBack' || key === 'BrowserBack' || code === 27 || code === 8 || code === 4;
+
+      if (!isStarted) {
+        if (isEnter) {
+          e.preventDefault();
+          startApp();
+        }
+        return;
+      }
+
+      if (isSingleWebcamZoomed) {
+        if (isBack || isEnter) {
+          e.preventDefault();
+          closeFullscreenWebcam();
+        }
+        return;
+      }
+
+      const visibleCount = getVisibleCountOnScreen(currentBatchStart);
+      if (visibleCount === 0) return;
+
+      if (isRight) {
+        e.preventDefault();
+        if (selectedCellIndex + 1 < visibleCount) {
+          selectedCellIndex++;
+          updateSelectionHighlight();
+        } else if (webcamItems.length > gridSize) {
+          switchToBatch(getNextBatchStart(currentBatchStart), 0);
+        } else {
+          selectedCellIndex = 0;
+          updateSelectionHighlight();
+        }
+        resetRotationTimer();
+      } else if (isLeft) {
+        e.preventDefault();
+        if (selectedCellIndex - 1 >= 0) {
+          selectedCellIndex--;
+          updateSelectionHighlight();
+        } else if (webcamItems.length > gridSize) {
+          const prevStart = getPrevBatchStart(currentBatchStart);
+          switchToBatch(prevStart, getVisibleCountOnScreen(prevStart) - 1);
+        } else {
+          selectedCellIndex = visibleCount - 1;
+          updateSelectionHighlight();
+        }
+        resetRotationTimer();
+      } else if (isDown) {
+        e.preventDefault();
+        if (gridSize >= 3 && selectedCellIndex + 2 < visibleCount) {
+          selectedCellIndex += 2;
+          updateSelectionHighlight();
+        } else if (webcamItems.length > gridSize) {
+          switchToBatch(getNextBatchStart(currentBatchStart), 0);
+        }
+        resetRotationTimer();
+      } else if (isUp) {
+        e.preventDefault();
+        if (gridSize >= 3 && selectedCellIndex - 2 >= 0) {
+          selectedCellIndex -= 2;
+          updateSelectionHighlight();
+        } else if (webcamItems.length > gridSize) {
+          const prevStart = getPrevBatchStart(currentBatchStart);
+          switchToBatch(prevStart, getVisibleCountOnScreen(prevStart) - 1);
+        }
+        resetRotationTimer();
+      } else if (isEnter) {
+        e.preventDefault();
+        openFullscreenWebcam(activeBuffer, selectedCellIndex);
+      }
+    });
+
+    async function init() {
+      try {
+        overlay.focus();
+        const data = await fetchRemoteData();
+        intervalInSeconds = data.newInterval;
+        gridSize = data.newGrid;
+        checkIntervalInSeconds = data.newCheckInterval;
+        webcamItems = data.newItems || [];
+
+        applyGridLayout();
+
+        if (webcamItems.length === 0) {
+          infoText.innerHTML = "<span style='color:#ff4d4d;'>Geen webcam URL's gevonden!</span><br><small style='color:#aaa;'>Controleer 'webcams.list' in je GitHub repo.</small>";
+        } else {
+          const totaalSchermen = Math.ceil(webcamItems.length / gridSize);
+          infoText.textContent = `Grid: ${gridSize} | Rotatietijd: ${intervalInSeconds}s | Webcams: ${webcamItems.length} (${totaalSchermen} ${totaalSchermen === 1 ? 'scherm' : 'schermen'})`;
+        }
+      } catch (err) {
+        infoText.innerHTML = `<span style='color:#ff4d4d;'>Fout bij laden: ${err.message}</span>`;
+      }
+    }
+
+    async function startApp() {
+      if (isStarted) return;
+      isStarted = true;
+
+      requestNativeFullscreen();
+
+      if (initPromise) {
+        await initPromise;
+      }
+
+      if (webcamItems.length === 0) {
+        isStarted = false;
+        alert("Kan niet starten: geen geldige URL's geladen uit 'webcams.list'. Controleer je GitHub repository.");
+        return;
+      }
+
+      overlay.style.display = 'none';
+
+      activeBuffer = 0;
+      currentBatchStart = 0;
+      selectedCellIndex = 0;
+      loadBatchIntoBuffer(0, 0, true);
+      grids[0].classList.add('active');
+      grids[1].classList.remove('active');
+      updateSelectionHighlight();
+
+      resetRotationTimer();
+      startBackgroundSync();
+    }
+
+    initPromise = init();
+  </script>
+
+</body>
+</html>
