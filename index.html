@@ -17,17 +17,30 @@
       overflow: hidden;
       font-family: sans-serif;
     }
-    /* Dynamische Grid Layout (wordt via JS ingesteld op basis van config.file) */
-    #grid-container {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      grid-template-rows: 1fr 1fr;
+
+    /* Twee identieke grid-lagen over elkaar voor naadloos voorladen (double buffering) */
+    .grid-layer {
+      position: fixed;
+      top: 0;
+      left: 0;
       width: 100vw;
       height: 100vh;
+      display: grid;
       background-color: #000;
-      gap: 2px;
-      position: relative;
+      opacity: 0;
+      z-index: 1;
+      pointer-events: none;
+      transition: opacity 0.5s ease-in-out;
     }
+    .grid-layer.active {
+      opacity: 1;
+      z-index: 2;
+      pointer-events: auto;
+    }
+    .grid-layer.zoom-container {
+      z-index: 9000;
+    }
+
     .iframe-wrapper {
       position: relative;
       width: 100%;
@@ -51,13 +64,15 @@
       cursor: pointer;
       z-index: 10;
     }
+
+    /* Fullscreen zoom voor één specifieke webcam */
     .iframe-wrapper.fullscreen-active {
       position: fixed;
       top: 0;
       left: 0;
       width: 100vw;
       height: 100vh;
-      z-index: 9000;
+      z-index: 9001;
     }
     .iframe-wrapper.fullscreen-active iframe {
       pointer-events: auto;
@@ -89,7 +104,7 @@
     }
 
     #start-overlay {
-      position: absolute;
+      position: fixed;
       top: 0;
       left: 0;
       width: 100%;
@@ -131,53 +146,82 @@
 
   <button id="back-button" onclick="closeFullscreenWebcam()">← Terug naar overzicht</button>
 
-  <div id="grid-container">
-    <div class="iframe-wrapper" id="wrapper0">
-      <div class="click-overlay" onclick="openFullscreenWebcam(0)"></div>
-      <iframe id="frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+  <!-- Buffer 0 -->
+  <div id="grid0" class="grid-layer active">
+    <div class="iframe-wrapper" id="grid0-wrapper0">
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 0)"></div>
+      <iframe id="grid0-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
-    <div class="iframe-wrapper" id="wrapper1">
-      <div class="click-overlay" onclick="openFullscreenWebcam(1)"></div>
-      <iframe id="frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    <div class="iframe-wrapper" id="grid0-wrapper1">
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 1)"></div>
+      <iframe id="grid0-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
-    <div class="iframe-wrapper" id="wrapper2">
-      <div class="click-overlay" onclick="openFullscreenWebcam(2)"></div>
-      <iframe id="frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    <div class="iframe-wrapper" id="grid0-wrapper2">
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 2)"></div>
+      <iframe id="grid0-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
-    <div class="iframe-wrapper" id="wrapper3">
-      <div class="click-overlay" onclick="openFullscreenWebcam(3)"></div>
-      <iframe id="frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    <div class="iframe-wrapper" id="grid0-wrapper3">
+      <div class="click-overlay" onclick="openFullscreenWebcam(0, 3)"></div>
+      <iframe id="grid0-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+  </div>
+
+  <!-- Buffer 1 (voorladen op de achtergrond) -->
+  <div id="grid1" class="grid-layer">
+    <div class="iframe-wrapper" id="grid1-wrapper0">
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 0)"></div>
+      <iframe id="grid1-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid1-wrapper1">
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 1)"></div>
+      <iframe id="grid1-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid1-wrapper2">
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 2)"></div>
+      <iframe id="grid1-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+    </div>
+    <div class="iframe-wrapper" id="grid1-wrapper3">
+      <div class="click-overlay" onclick="openFullscreenWebcam(1, 3)"></div>
+      <iframe id="grid1-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
   </div>
 
   <script>
     let webcamURLs = [];
     let intervalInSeconds = 5;
-    let gridSize = 4; // Standaard 4 (waarde 1 t/m 4 uit config.file)
-    let currentBatchIndex = 0;
+    let gridSize = 4;
+
+    let activeBuffer = 0;
+    let currentBatchStart = 0;
+    let bufferLoadedStart = [-1, -1];
+
     let timerId = null;
+    let preloadTimeoutId = null;
     let isSingleWebcamZoomed = false;
-    let activeZoomedIndex = null;
+    let zoomedBuffer = null;
+    let zoomedCell = null;
     let initPromise = null;
 
-    const gridContainer = document.getElementById('grid-container');
+    const grids = [
+      document.getElementById('grid0'),
+      document.getElementById('grid1')
+    ];
+
     const wrappers = [
-      document.getElementById('wrapper0'),
-      document.getElementById('wrapper1'),
-      document.getElementById('wrapper2'),
-      document.getElementById('wrapper3')
+      [0, 1, 2, 3].map(i => document.getElementById(`grid0-wrapper${i}`)),
+      [0, 1, 2, 3].map(i => document.getElementById(`grid1-wrapper${i}`))
     ];
+
     const frames = [
-      document.getElementById('frame0'),
-      document.getElementById('frame1'),
-      document.getElementById('frame2'),
-      document.getElementById('frame3')
+      [0, 1, 2, 3].map(i => document.getElementById(`grid0-frame${i}`)),
+      [0, 1, 2, 3].map(i => document.getElementById(`grid1-frame${i}`))
     ];
+
     const overlay = document.getElementById('start-overlay');
     const infoText = document.getElementById('info-text');
     const backButton = document.getElementById('back-button');
 
-    // 1. Vraag native browser fullscreen direct aan (synchroon in de click-context)
+    // 1. Vraag native browser fullscreen direct aan
     function requestNativeFullscreen() {
       const elem = document.documentElement;
       if (elem.requestFullscreen) {
@@ -195,7 +239,7 @@
         const response = await fetch('config.file?t=' + Date.now());
         if (response.ok) {
           const text = await response.text();
-          
+
           const timeMatch = text.match(/rotating_time\s*=\s*(\d+)/i);
           if (timeMatch && timeMatch[1]) {
             intervalInSeconds = parseInt(timeMatch[1], 10);
@@ -204,7 +248,6 @@
           const gridMatch = text.match(/grid\s*=\s*(\d+)/i);
           if (gridMatch && gridMatch[1]) {
             const parsedGrid = parseInt(gridMatch[1], 10);
-            // Beperk de waarde tot minimaal 1 en maximaal 4
             gridSize = Math.min(4, Math.max(1, parsedGrid));
           }
         }
@@ -213,32 +256,32 @@
       }
     }
 
-    // 3. Pas de CSS Grid indeling aan op basis van gridSize (1 t/m 4)
+    // 3. Pas de CSS Grid indeling toe op beide bufferlagen
     function applyGridLayout() {
-      if (gridSize === 1) {
-        gridContainer.style.gridTemplateColumns = '1fr';
-        gridContainer.style.gridTemplateRows = '1fr';
-        gridContainer.style.gap = '0px';
-      } else if (gridSize === 2) {
-        gridContainer.style.gridTemplateColumns = '1fr 1fr';
-        gridContainer.style.gridTemplateRows = '1fr';
-        gridContainer.style.gap = '2px';
-      } else {
-        // Voor grid = 3 en grid = 4: 2x2 indeling zodat alle vakken even groot zijn
-        gridContainer.style.gridTemplateColumns = '1fr 1fr';
-        gridContainer.style.gridTemplateRows = '1fr 1fr';
-        gridContainer.style.gap = '2px';
-      }
-
-      // Verberg overbodige wrappers volledig uit het grid
-      for (let i = 0; i < 4; i++) {
-        if (i < gridSize) {
-          wrappers[i].style.display = 'block';
+      grids.forEach((grid, b) => {
+        if (gridSize === 1) {
+          grid.style.gridTemplateColumns = '1fr';
+          grid.style.gridTemplateRows = '1fr';
+          grid.style.gap = '0px';
+        } else if (gridSize === 2) {
+          grid.style.gridTemplateColumns = '1fr 1fr';
+          grid.style.gridTemplateRows = '1fr';
+          grid.style.gap = '2px';
         } else {
-          wrappers[i].style.display = 'none';
-          frames[i].src = 'about:blank';
+          grid.style.gridTemplateColumns = '1fr 1fr';
+          grid.style.gridTemplateRows = '1fr 1fr';
+          grid.style.gap = '2px';
         }
-      }
+
+        for (let i = 0; i < 4; i++) {
+          if (i < gridSize) {
+            wrappers[b][i].style.display = 'block';
+          } else {
+            wrappers[b][i].style.display = 'none';
+            frames[b][i].src = 'about:blank';
+          }
+        }
+      });
     }
 
     // 4. Haal de webcams op uit webcams.list
@@ -259,48 +302,95 @@
       }
     }
 
-    // 5. Toon het volgende blok van 'gridSize' webcams
-    function showNextBatch() {
-      if (webcamURLs.length === 0 || isSingleWebcamZoomed) return;
+    // 5. Bereken startindex van het volgende scherm
+    function getNextBatchStart(fromIndex) {
+      const next = fromIndex + gridSize;
+      return next >= webcamURLs.length ? 0 : next;
+    }
+
+    // 6. Laad een specifieke batch URL's in één van de twee buffers
+    function loadBatchIntoBuffer(bufIdx, startIdx) {
+      if (bufferLoadedStart[bufIdx] === startIdx) return;
+      bufferLoadedStart[bufIdx] = startIdx;
 
       for (let i = 0; i < gridSize; i++) {
-        const urlIndex = currentBatchIndex + i;
+        const urlIndex = startIdx + i;
         if (urlIndex < webcamURLs.length) {
-          frames[i].src = webcamURLs[urlIndex];
-          wrappers[i].style.visibility = 'visible';
+          frames[bufIdx][i].src = webcamURLs[urlIndex];
+          wrappers[bufIdx][i].style.visibility = 'visible';
         } else {
-          frames[i].src = 'about:blank';
-          wrappers[i].style.visibility = 'hidden';
+          frames[bufIdx][i].src = 'about:blank';
+          wrappers[bufIdx][i].style.visibility = 'hidden';
         }
-      }
-
-      currentBatchIndex += gridSize;
-      if (currentBatchIndex >= webcamURLs.length) {
-        currentBatchIndex = 0;
       }
     }
 
-    // 6. Zoom in op één webcam (pauzeert rotatie)
-    function openFullscreenWebcam(index) {
-      if (!frames[index].src || frames[index].src === 'about:blank') return;
+    // 7. Wissel zichtbare en voorgeladen buffer om en laad daarna de volgende set vooruit
+    function rotateToNextBatch() {
+      if (webcamURLs.length <= gridSize || isSingleWebcamZoomed) return;
+
+      const nextBuffer = 1 - activeBuffer;
+      const nextStart = getNextBatchStart(currentBatchStart);
+
+      // Zorg dat de buffer geladen is (als fallback) en wissel met crossfade
+      loadBatchIntoBuffer(nextBuffer, nextStart);
+      grids[nextBuffer].classList.add('active');
+      grids[activeBuffer].classList.remove('active');
+
+      activeBuffer = nextBuffer;
+      currentBatchStart = nextStart;
+
+      // Wacht 600ms (tot de fade van 500ms klaar is) en laad dan de volgende set op de achtergrond
+      const upcomingStart = getNextBatchStart(currentBatchStart);
+      const hiddenBuffer = 1 - activeBuffer;
+      if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
+      preloadTimeoutId = setTimeout(() => {
+        if (!isSingleWebcamZoomed) {
+          loadBatchIntoBuffer(hiddenBuffer, upcomingStart);
+        }
+      }, 600);
+    }
+
+    // 8. Zoom in op één webcam
+    function openFullscreenWebcam(bufIdx, cellIdx) {
+      if (bufIdx !== activeBuffer) return;
+      if (!frames[bufIdx][cellIdx].src || frames[bufIdx][cellIdx].src === 'about:blank') return;
+
       if (timerId) clearInterval(timerId);
+      if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
+
       isSingleWebcamZoomed = true;
-      activeZoomedIndex = index;
-      wrappers[index].classList.add('fullscreen-active');
+      zoomedBuffer = bufIdx;
+      zoomedCell = cellIdx;
+
+      grids[bufIdx].classList.add('zoom-container');
+      wrappers[bufIdx][cellIdx].classList.add('fullscreen-active');
       backButton.style.display = 'block';
       backButton.focus();
     }
 
-    // 7. Sluit de ingezoomde webcam en hervat de rotatie op het huidige scherm
+    // 9. Sluit de ingezoomde webcam en hervat rotatie
     function closeFullscreenWebcam() {
       if (!isSingleWebcamZoomed) return;
-      if (activeZoomedIndex !== null) {
-        wrappers[activeZoomedIndex].classList.remove('fullscreen-active');
+
+      if (zoomedBuffer !== null && zoomedCell !== null) {
+        wrappers[zoomedBuffer][zoomedCell].classList.remove('fullscreen-active');
+        grids[zoomedBuffer].classList.remove('zoom-container');
       }
+
       backButton.style.display = 'none';
       isSingleWebcamZoomed = false;
-      activeZoomedIndex = null;
-      timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
+      zoomedBuffer = null;
+      zoomedCell = null;
+
+      if (webcamURLs.length > gridSize) {
+        // Zorg dat de onzichtbare buffer klaarstaat voor de volgende wissel
+        const upcomingStart = getNextBatchStart(currentBatchStart);
+        loadBatchIntoBuffer(1 - activeBuffer, upcomingStart);
+
+        if (timerId) clearInterval(timerId);
+        timerId = setInterval(rotateToNextBatch, intervalInSeconds * 1000);
+      }
     }
 
     window.addEventListener('keydown', (e) => {
@@ -309,7 +399,7 @@
       }
     });
 
-    // 8. Initieer gegevens bij het laden
+    // 10. Initieer gegevens bij het laden
     async function init() {
       await loadConfig();
       applyGridLayout();
@@ -323,7 +413,7 @@
       }
     }
 
-    // 9. Start de app wanneer op het startscherm wordt geklikt
+    // 11. Start de app
     async function startApp() {
       requestNativeFullscreen();
 
@@ -338,9 +428,21 @@
 
       overlay.style.display = 'none';
 
-      showNextBatch();
-      if (timerId) clearInterval(timerId);
-      timerId = setInterval(showNextBatch, intervalInSeconds * 1000);
+      // Laad direct het eerste scherm in Buffer 0
+      activeBuffer = 0;
+      currentBatchStart = 0;
+      loadBatchIntoBuffer(0, 0);
+      grids[0].classList.add('active');
+      grids[1].classList.remove('active');
+
+      // Alleen roteren & voorladen als er meer webcams zijn dan op 1 scherm passen
+      if (webcamURLs.length > gridSize) {
+        const nextStart = getNextBatchStart(0);
+        loadBatchIntoBuffer(1, nextStart);
+
+        if (timerId) clearInterval(timerId);
+        timerId = setInterval(rotateToNextBatch, intervalInSeconds * 1000);
+      }
     }
 
     initPromise = init();
