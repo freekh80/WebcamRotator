@@ -105,7 +105,7 @@
       pointer-events: none;
     }
     .webcam-img.panoramic {
-      animation: pan-panorama 28s ease-in-out infinite alternate;
+      animation: pan-panorama 56s ease-in-out infinite alternate;
     }
     @keyframes pan-panorama {
       0% { object-position: 10% 50%; }
@@ -356,7 +356,6 @@
       try {
         const urlObj = new URL(rawUrl);
         if (urlObj.hostname === 'backend.roundshot.com') {
-          // /full (11772x2048) en /original overschrijden de GPU-limiet op Google TV -> schaal slim terug
           urlObj.pathname = urlObj.pathname.replace(/\/(original|full2?|default)$/i, isZoomed ? '/half' : '/quarter');
         }
         urlObj.searchParams.set('_cb', Date.now().toString());
@@ -366,7 +365,6 @@
       }
     }
 
-    // Koppel automatische panorama-animatie en foutafhandeling aan alle <img>-elementen
     for (let b = 0; b < 2; b++) {
       for (let i = 0; i < 4; i++) {
         const imgEl = images[b][i];
@@ -378,7 +376,6 @@
           }
         });
         imgEl.addEventListener('error', () => {
-          // Fallback als /half nog te groot is voor een oudere TV-GPU
           if (imgEl.src && imgEl.src.includes('/half')) {
             imgEl.src = imgEl.src.replace('/half', '/quarter');
           }
@@ -801,7 +798,6 @@
       if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
       clearBuffer(1 - activeBuffer);
 
-      // Schakel bij Roundshot-afbeeldingen over naar hogere resolutie tijdens zoom
       if (isDirectImageUrl(item.url)) {
         images[bufIdx][cellIdx].src = buildOptimizedImageUrl(item.url, true);
       }
