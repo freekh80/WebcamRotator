@@ -18,6 +18,7 @@
       font-family: sans-serif;
     }
 
+    /* opacity: 0.01 en 0.999 voorkomen dat Google TV / Chromium de achtergrond-iframes pauzeert */
     .grid-layer {
       position: fixed;
       top: 0;
@@ -26,13 +27,13 @@
       height: 100vh;
       display: grid;
       background-color: #000;
-      opacity: 0;
+      opacity: 0.01;
       z-index: 1;
       pointer-events: none;
-      transition: opacity 0.4s ease-in-out;
+      transition: opacity 0.45s ease-in-out;
     }
     .grid-layer.active {
-      opacity: 1;
+      opacity: 0.999;
       z-index: 2;
       pointer-events: auto;
     }
@@ -566,8 +567,9 @@
       if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
       if (webcamItems.length <= gridSize || isSingleWebcamZoomed) return;
 
-      // Laad de volgende batch pas 2,5s voor de wissel vooruit om geheugen op Google TV te sparen
-      const preloadDelayMs = Math.max(500, (intervalInSeconds - 2.5) * 1000);
+      // Geef de volgende batch tot 6 seconden (of 70% van de rotatietijd) om voor te laden
+      const leadTimeSeconds = Math.min(6, Math.max(2.5, intervalInSeconds * 0.7));
+      const preloadDelayMs = Math.max(600, (intervalInSeconds - leadTimeSeconds) * 1000);
       const upcomingStart = getNextBatchStart(currentBatchStart);
       const hiddenBuffer = 1 - activeBuffer;
 
