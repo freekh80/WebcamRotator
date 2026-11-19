@@ -95,6 +95,23 @@
       display: block;
       pointer-events: none;
     }
+
+    .webcam-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center center;
+      display: none;
+      pointer-events: none;
+    }
+    .webcam-img.panoramic {
+      animation: pan-panorama 28s ease-in-out infinite alternate;
+    }
+    @keyframes pan-panorama {
+      0% { object-position: 10% 50%; }
+      100% { object-position: 90% 50%; }
+    }
+
     .click-overlay {
       position: absolute;
       top: 0;
@@ -219,21 +236,25 @@
     <div class="iframe-wrapper" id="grid0-wrapper0">
       <div class="webcam-label" id="grid0-label0"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 0)"></div>
+      <img class="webcam-img" id="grid0-img0" alt="" />
       <iframe id="grid0-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid0-wrapper1">
       <div class="webcam-label" id="grid0-label1"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 1)"></div>
+      <img class="webcam-img" id="grid0-img1" alt="" />
       <iframe id="grid0-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid0-wrapper2">
       <div class="webcam-label" id="grid0-label2"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 2)"></div>
+      <img class="webcam-img" id="grid0-img2" alt="" />
       <iframe id="grid0-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid0-wrapper3">
       <div class="webcam-label" id="grid0-label3"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 3)"></div>
+      <img class="webcam-img" id="grid0-img3" alt="" />
       <iframe id="grid0-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
   </div>
@@ -242,21 +263,25 @@
     <div class="iframe-wrapper" id="grid1-wrapper0">
       <div class="webcam-label" id="grid1-label0"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 0)"></div>
+      <img class="webcam-img" id="grid1-img0" alt="" />
       <iframe id="grid1-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid1-wrapper1">
       <div class="webcam-label" id="grid1-label1"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 1)"></div>
+      <img class="webcam-img" id="grid1-img1" alt="" />
       <iframe id="grid1-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid1-wrapper2">
       <div class="webcam-label" id="grid1-label2"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 2)"></div>
+      <img class="webcam-img" id="grid1-img2" alt="" />
       <iframe id="grid1-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid1-wrapper3">
       <div class="webcam-label" id="grid1-label3"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 3)"></div>
+      <img class="webcam-img" id="grid1-img3" alt="" />
       <iframe id="grid1-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
     </div>
   </div>
@@ -300,6 +325,11 @@
       [0, 1, 2, 3].map(i => document.getElementById('grid1-label' + i))
     ];
 
+    const images = [
+      [0, 1, 2, 3].map(i => document.getElementById('grid0-img' + i)),
+      [0, 1, 2, 3].map(i => document.getElementById('grid1-img' + i))
+    ];
+
     const frames = [
       [0, 1, 2, 3].map(i => document.getElementById('grid0-frame' + i)),
       [0, 1, 2, 3].map(i => document.getElementById('grid1-frame' + i))
@@ -309,6 +339,52 @@
     const infoText = document.getElementById('info-text');
     const backButton = document.getElementById('back-button');
     const updateToast = document.getElementById('update-toast');
+
+    function isDirectImageUrl(rawUrl) {
+      try {
+        const urlObj = new URL(rawUrl);
+        const path = urlObj.pathname.toLowerCase();
+        if (/\.(jpe?g|png|webp|gif)$/i.test(path)) return true;
+        if ((urlObj.hostname === 'backend.roundshot.com' || urlObj.hostname === 'storage.roundshot.com') && path.includes('/cams/')) {
+          return true;
+        }
+      } catch (e) {}
+      return false;
+    }
+
+    function buildOptimizedImageUrl(rawUrl, isZoomed) {
+      try {
+        const urlObj = new URL(rawUrl);
+        if (urlObj.hostname === 'backend.roundshot.com') {
+          // /full (11772x2048) en /original overschrijden de GPU-limiet op Google TV -> schaal slim terug
+          urlObj.pathname = urlObj.pathname.replace(/\/(original|full2?|default)$/i, isZoomed ? '/half' : '/quarter');
+        }
+        urlObj.searchParams.set('_cb', Date.now().toString());
+        return urlObj.toString();
+      } catch (e) {
+        return rawUrl;
+      }
+    }
+
+    // Koppel automatische panorama-animatie en foutafhandeling aan alle <img>-elementen
+    for (let b = 0; b < 2; b++) {
+      for (let i = 0; i < 4; i++) {
+        const imgEl = images[b][i];
+        imgEl.addEventListener('load', () => {
+          if (imgEl.naturalWidth > 0 && imgEl.naturalHeight > 0 && (imgEl.naturalWidth / imgEl.naturalHeight) > 2.1) {
+            imgEl.classList.add('panoramic');
+          } else {
+            imgEl.classList.remove('panoramic');
+          }
+        });
+        imgEl.addEventListener('error', () => {
+          // Fallback als /half nog te groot is voor een oudere TV-GPU
+          if (imgEl.src && imgEl.src.includes('/half')) {
+            imgEl.src = imgEl.src.replace('/half', '/quarter');
+          }
+        });
+      }
+    }
 
     function formatSlug(text) {
       return text
@@ -328,7 +404,7 @@
         'player', 'view', 'viewer', 'watch', 'video', 'videos',
         'index', 'home', 'default', 'main', 'public', 'media',
         'image', 'images', 'img', 'snap', 'snapshot', 'latest',
-        'current', 'full', 'hd', '4k', 'nl', 'en', 'fr', 'de', 'it', 'es',
+        'current', 'full', 'half', 'quarter', 'hd', '4k', 'nl', 'en', 'fr', 'de', 'it', 'es',
         'hiver', 'winter', 'ete', 'summer', 'ski', 'station', 'resort',
         'webtv', 'panomax', 'skaping', 'feratel', 'bergfex', 'roundshot',
         'foto-webcam', 'youtube', 'youtu'
@@ -348,7 +424,7 @@
           .map(seg => {
             try { return decodeURIComponent(seg); } catch (e) { return seg; }
           })
-          .map(seg => seg.replace(/\.(html?|php|aspx?|jsp|jpe?g|png|m3u8|mp4)$/i, '').trim())
+          .map(seg => seg.replace(/\.(html?|php|aspx?|jsp|jpe?g|png|webp|m3u8|mp4)$/i, '').trim())
           .filter(seg => seg.length > 1 && !isGenericOrId(seg));
 
         if (pathParts.length > 0) {
@@ -381,8 +457,6 @@
     }
 
     function parseWebcamLine(line) {
-      // 1. Ondersteun "Eigen Naam=URL" (bijv. Tignes-Val claret=https://backend.roundshot.com/cams/221/full)
-      // Controleer dat de regel niet al met http(s):// begint, zodat '=' in query-parameters (?cam=5132) intact blijft
       const eqIndex = line.indexOf('=');
       if (eqIndex > 0 && !/^https?:\/\//i.test(line)) {
         const customName = line.slice(0, eqIndex).trim();
@@ -395,7 +469,6 @@
         }
       }
 
-      // 2. Behoud ondersteuning voor optioneel "URL | Eigen Naam"
       const pipeIndex = line.indexOf('|');
       if (pipeIndex !== -1) {
         const urlPart = line.slice(0, pipeIndex).trim();
@@ -406,7 +479,6 @@
         };
       }
 
-      // 3. Alleen een URL: haal de naam automatisch uit het pad
       return {
         url: line,
         name: extractWebcamName(line)
@@ -488,6 +560,16 @@
       return { newInterval, newGrid, newCheckInterval, newItems };
     }
 
+    function clearCell(bufIdx, cellIdx) {
+      frames[bufIdx][cellIdx].src = 'about:blank';
+      frames[bufIdx][cellIdx].style.display = 'block';
+      images[bufIdx][cellIdx].removeAttribute('src');
+      images[bufIdx][cellIdx].style.display = 'none';
+      images[bufIdx][cellIdx].classList.remove('panoramic');
+      labels[bufIdx][cellIdx].textContent = '';
+      labels[bufIdx][cellIdx].style.display = 'none';
+    }
+
     function applyGridLayout() {
       grids.forEach((grid, b) => {
         if (gridSize === 1) {
@@ -509,8 +591,7 @@
             wrappers[b][i].style.display = 'block';
           } else {
             wrappers[b][i].style.display = 'none';
-            frames[b][i].src = 'about:blank';
-            labels[b][i].textContent = '';
+            clearCell(b, i);
           }
         }
       });
@@ -519,8 +600,7 @@
     function clearBuffer(bufIdx) {
       bufferLoadedStart[bufIdx] = -1;
       for (let i = 0; i < 4; i++) {
-        frames[bufIdx][i].src = 'about:blank';
-        labels[bufIdx][i].textContent = '';
+        clearCell(bufIdx, i);
       }
     }
 
@@ -567,14 +647,25 @@
       for (let i = 0; i < gridSize; i++) {
         const itemIndex = startIdx + i;
         if (itemIndex < webcamItems.length) {
-          frames[bufIdx][i].src = webcamItems[itemIndex].url;
-          labels[bufIdx][i].textContent = webcamItems[itemIndex].name;
-          labels[bufIdx][i].style.display = webcamItems[itemIndex].name ? 'block' : 'none';
+          const item = webcamItems[itemIndex];
+          labels[bufIdx][i].textContent = item.name;
+          labels[bufIdx][i].style.display = item.name ? 'block' : 'none';
           wrappers[bufIdx][i].style.visibility = 'visible';
+
+          if (isDirectImageUrl(item.url)) {
+            frames[bufIdx][i].src = 'about:blank';
+            frames[bufIdx][i].style.display = 'none';
+            images[bufIdx][i].style.display = 'block';
+            images[bufIdx][i].src = buildOptimizedImageUrl(item.url, false);
+          } else {
+            images[bufIdx][i].removeAttribute('src');
+            images[bufIdx][i].style.display = 'none';
+            images[bufIdx][i].classList.remove('panoramic');
+            frames[bufIdx][i].style.display = 'block';
+            frames[bufIdx][i].src = item.url;
+          }
         } else {
-          frames[bufIdx][i].src = 'about:blank';
-          labels[bufIdx][i].textContent = '';
-          labels[bufIdx][i].style.display = 'none';
+          clearCell(bufIdx, i);
           wrappers[bufIdx][i].style.visibility = 'hidden';
         }
       }
@@ -584,7 +675,6 @@
       if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
       if (webcamItems.length <= gridSize || isSingleWebcamZoomed) return;
 
-      // Geef de volgende batch tot 6 seconden (of 70% van de rotatietijd) om voor te laden
       const leadTimeSeconds = Math.min(6, Math.max(2.5, intervalInSeconds * 0.7));
       const preloadDelayMs = Math.max(600, (intervalInSeconds - leadTimeSeconds) * 1000);
       const upcomingStart = getNextBatchStart(currentBatchStart);
@@ -623,7 +713,6 @@
       selectedCellIndex = newSelectedCell;
       updateSelectionHighlight();
 
-      // Maak de oude buffer na de fade (500ms) direct leeg zodat videostreams geheugen vrijgeven
       if (cleanupTimeoutId) clearTimeout(cleanupTimeoutId);
       cleanupTimeoutId = setTimeout(() => {
         if (!isSingleWebcamZoomed && activeBuffer !== oldBuffer) {
@@ -703,11 +792,19 @@
 
     function openFullscreenWebcam(bufIdx, cellIdx) {
       if (bufIdx !== activeBuffer) return;
-      if (!frames[bufIdx][cellIdx].src || frames[bufIdx][cellIdx].src === 'about:blank') return;
+
+      const itemIndex = currentBatchStart + cellIdx;
+      const item = webcamItems[itemIndex];
+      if (!item) return;
 
       if (timerId) clearInterval(timerId);
       if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
       clearBuffer(1 - activeBuffer);
+
+      // Schakel bij Roundshot-afbeeldingen over naar hogere resolutie tijdens zoom
+      if (isDirectImageUrl(item.url)) {
+        images[bufIdx][cellIdx].src = buildOptimizedImageUrl(item.url, true);
+      }
 
       selectedCellIndex = cellIdx;
       isSingleWebcamZoomed = true;
@@ -729,6 +826,12 @@
       if (!isSingleWebcamZoomed) return;
 
       if (zoomedBuffer !== null && zoomedCell !== null) {
+        const itemIndex = currentBatchStart + zoomedCell;
+        const item = webcamItems[itemIndex];
+        if (item && isDirectImageUrl(item.url)) {
+          images[zoomedBuffer][zoomedCell].src = buildOptimizedImageUrl(item.url, false);
+        }
+
         wrappers[zoomedBuffer][zoomedCell].classList.remove('fullscreen-active');
         grids[zoomedBuffer].classList.remove('zoom-container');
       }
