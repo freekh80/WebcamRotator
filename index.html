@@ -88,13 +88,13 @@
       display: none;
     }
 
-    /* pointer-events: auto zorgt dat Skaping/WebGL panorama's ook in het grid blijven bewegen */
     iframe {
       width: 100%;
       height: 100%;
       border: none;
       display: block;
       pointer-events: auto;
+      transform-origin: 0 0;
     }
 
     .webcam-img {
@@ -338,6 +338,73 @@
     const backButton = document.getElementById('back-button');
     const updateToast = document.getElementById('update-toast');
 
+    function isSkapingUrl(rawUrl) {
+      try {
+        const urlObj = new URL(rawUrl);
+        return urlObj.hostname === 'skaping.com' || urlObj.hostname.endsWith('.skaping.com');
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function buildOptimizedIframeUrl(rawUrl) {
+      try {
+        const urlObj = new URL(rawUrl);
+        if (urlObj.hostname === 'skaping.com' || urlObj.hostname.endsWith('.skaping.com')) {
+          const segments = urlObj.pathname.split('/').filter(Boolean);
+          // Gebruik /embed voor standaard Skaping-cam-URL's zodat de speler direct beeldvullend start
+          if (segments.length === 2 && segments[1] !== 'embed' && segments[1] !== 'video') {
+            urlObj.pathname = '/' + segments.join('/') + '/embed';
+          }
+          return urlObj.toString();
+        }
+      } catch (e) {}
+      return rawUrl;
+    }
+
+    function updateIframeScale(bufIdx, cellIdx) {
+      const iframeEl = frames[bufIdx][cellIdx];
+      const wrapperEl = wrappers[bufIdx][cellIdx];
+      if (!iframeEl || !wrapperEl) return;
+
+      if (iframeEl.dataset.virtualDesktop === 'true') {
+        const rect = wrapperEl.getBoundingClientRect();
+        const w = rect.width || (window.innerWidth / (gridSize === 1 ? 1 : 2));
+        const h = rect.height || (window.innerHeight / (gridSize <= 2 ? 1 : 2));
+        const virtualWidth = 1280;
+        const virtualHeight = Math.max(400, Math.round(virtualWidth * (h / Math.max(1, w))));
+        const scale = w / virtualWidth;
+
+        iframeEl.style.width = virtualWidth + 'px';
+        iframeEl.style.height = virtualHeight + 'px';
+        iframeEl.style.transform = `scale(${scale})`;
+      } else {
+        iframeEl.style.width = '100%';
+        iframeEl.style.height = '100%';
+        iframeEl.style.transform = '';
+      }
+    }
+
+    function updateAllIframeScales() {
+      for (let b = 0; b < 2; b++) {
+        for (let i = 0; i < 4; i++) {
+          updateIframeScale(b, i);
+        }
+      }
+    }
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const cellResizeObserver = new ResizeObserver(() => {
+        updateAllIframeScales();
+      });
+      for (let b = 0; b < 2; b++) {
+        for (let i = 0; i < 4; i++) {
+          cellResizeObserver.observe(wrappers[b][i]);
+        }
+      }
+    }
+    window.addEventListener('resize', updateAllIframeScales);
+
     function isDirectImageUrl(rawUrl) {
       try {
         const urlObj = new URL(rawUrl);
@@ -556,6 +623,8 @@
     }
 
     function clearCell(bufIdx, cellIdx) {
+      frames[bufIdx][cellIdx].dataset.virtualDesktop = 'false';
+      updateIframeScale(bufIdx, cellIdx);
       frames[bufIdx][cellIdx].src = 'about:blank';
       frames[bufIdx][cellIdx].style.display = 'block';
       images[bufIdx][cellIdx].removeAttribute('src');
@@ -590,6 +659,7 @@
           }
         }
       });
+      requestAnimationFrame(updateAllIframeScales);
     }
 
     function clearBuffer(bufIdx) {
@@ -648,6 +718,8 @@
           wrappers[bufIdx][i].style.visibility = 'visible';
 
           if (isDirectImageUrl(item.url)) {
+            frames[bufIdx][i].dataset.virtualDesktop = 'false';
+            updateIframeScale(bufIdx, i);
             frames[bufIdx][i].src = 'about:blank';
             frames[bufIdx][i].style.display = 'none';
             images[bufIdx][i].style.display = 'block';
@@ -657,21 +729,17 @@
             images[bufIdx][i].style.display = 'none';
             images[bufIdx][i].classList.remove('panoramic');
             frames[bufIdx][i].style.display = 'block';
-            frames[bufIdx][i].src = item.url;
+
+            const useVirtualDesktop = isSkapingUrl(item.url);
+            frames[bufIdx][i].dataset.virtualDesktop = useVirtualDesktop ? 'true' : 'false';
+            updateIframeScale(bufIdx, i);
+            frames[bufIdx][i].src = buildOptimizedIframeUrl(item.url);
           }
         } else {
           clearCell(bufIdx, i);
           wrappers[bufIdx][i].style.visibility = 'hidden';
         }
       }
-    }
-
-    function triggerBufferResize(bufIdx) {
-      const targetGrid = grids[bufIdx];
-      targetGrid.style.width = 'calc(100vw - 1px)';
-      requestAnimationFrame(() => {
-        targetGrid.style.width = '100vw';
-      });
     }
 
     function scheduleNextPreload() {
@@ -710,7 +778,7 @@
 
       grids[nextBuffer].classList.add('active');
       grids[oldBuffer].classList.remove('active');
-      triggerBufferResize(nextBuffer);
+      requestAnimationFrame(updateAllIframeScales);
 
       activeBuffer = nextBuffer;
       currentBatchStart = targetStart;
@@ -757,7 +825,6 @@
       loadBatchIntoBuffer(nextBuffer, currentBatchStart, true);
       grids[nextBuffer].classList.add('active');
       grids[activeBuffer].classList.remove('active');
-      triggerBufferResize(nextBuffer);
       activeBuffer = nextBuffer;
       updateSelectionHighlight();
 
@@ -818,6 +885,8 @@
 
       grids[bufIdx].classList.add('zoom-container');
       wrappers[bufIdx][cellIdx].classList.add('fullscreen-active');
+      requestAnimationFrame(() => updateIframeScale(bufIdx, cellIdx));
+
       backButton.style.display = 'block';
       backButton.focus();
 
@@ -830,15 +899,17 @@
       if (!isSingleWebcamZoomed) return;
 
       if (zoomedBuffer !== null && zoomedCell !== null) {
-        const itemIndex = currentBatchStart + zoomedCell;
+        const b = zoomedBuffer;
+        const c = zoomedCell;
+        const itemIndex = currentBatchStart + c;
         const item = webcamItems[itemIndex];
         if (item && isDirectImageUrl(item.url)) {
-          images[zoomedBuffer][zoomedCell].src = buildOptimizedImageUrl(item.url, false);
+          images[b][c].src = buildOptimizedImageUrl(item.url, false);
         }
 
-        wrappers[zoomedBuffer][zoomedCell].classList.remove('fullscreen-active');
-        grids[zoomedBuffer].classList.remove('zoom-container');
-        triggerBufferResize(zoomedBuffer);
+        wrappers[b][c].classList.remove('fullscreen-active');
+        grids[b].classList.remove('zoom-container');
+        requestAnimationFrame(() => updateIframeScale(b, c));
       }
 
       backButton.style.display = 'none';
@@ -995,6 +1066,7 @@
       loadBatchIntoBuffer(0, 0, true);
       grids[0].classList.add('active');
       grids[1].classList.remove('active');
+      requestAnimationFrame(updateAllIframeScales);
       updateSelectionHighlight();
 
       resetRotationTimer();
