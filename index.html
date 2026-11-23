@@ -482,7 +482,22 @@
       return 'Webcam';
     }
 
+    // Ondersteunt de optionele toevoeging " @fresh" aan het eind van een regel in webcams.list.
+    // Voorbeeld:  Zermatt|https://voorbeeld.com/cam  @fresh
+    // Zo'n webcam wordt NIET voorgeladen, maar pas geladen op het moment dat hij in beeld komt.
+    // Daardoor loopt een intro-animatie (bv. schuiven van links naar rechts) zichtbaar af.
     function parseWebcamLine(line) {
+      let fresh = false;
+      if (/\s@fresh\s*$/i.test(line)) {
+        fresh = true;
+        line = line.replace(/\s@fresh\s*$/i, '').trim();
+      }
+      const result = parseWebcamLineInner(line);
+      result.fresh = fresh;
+      return result;
+    }
+
+    function parseWebcamLineInner(line) {
       const eqIndex = line.indexOf('=');
       if (eqIndex > 0 && !/^https?:\/\//i.test(line)) {
         const customName = line.slice(0, eqIndex).trim();
@@ -534,7 +549,7 @@
     function itemsEqual(a, b) {
       if (a.length !== b.length) return false;
       for (let i = 0; i < a.length; i++) {
-        if (a[i].url !== b[i].url || a[i].name !== b[i].name) return false;
+        if (a[i].url !== b[i].url || a[i].name !== b[i].name || a[i].fresh !== b[i].fresh) return false;
       }
       return true;
     }
@@ -589,6 +604,7 @@
     function clearCell(bufIdx, cellIdx) {
       frames[bufIdx][cellIdx].src = 'about:blank';
       frames[bufIdx][cellIdx].style.display = 'block';
+      delete frames[bufIdx][cellIdx].dataset.pendingSrc;
       images[bufIdx][cellIdx].removeAttribute('src');
       images[bufIdx][cellIdx].style.display = 'none';
       images[bufIdx][cellIdx].classList.remove('panoramic');
@@ -667,7 +683,9 @@
       }
     }
 
-    function loadBatchIntoBuffer(bufIdx, startIdx, force = false) {
+    // deferFresh = true: iframes van webcams met @fresh worden nog niet geladen
+    // (alleen onthouden in data-pending-src), zodat ze pas starten bij het wisselen.
+    function loadBatchIntoBuffer(bufIdx, startIdx, force = false, deferFresh = false) {
       if (!force && bufferLoadedStart[bufIdx] === startIdx) return;
       bufferLoadedStart[bufIdx] = startIdx;
 
@@ -681,6 +699,7 @@
 
           if (isDirectImageUrl(item.url)) {
             frames[bufIdx][i].src = 'about:blank';
+            delete frames[bufIdx][i].dataset.pendingSrc;
             frames[bufIdx][i].style.display = 'none';
             images[bufIdx][i].style.display = 'block';
             images[bufIdx][i].src = buildOptimizedImageUrl(item.url, false);
@@ -689,13 +708,30 @@
             images[bufIdx][i].style.display = 'none';
             images[bufIdx][i].classList.remove('panoramic');
             frames[bufIdx][i].style.display = 'block';
-            frames[bufIdx][i].src = item.url;
+
+            if (item.fresh && deferFresh) {
+              frames[bufIdx][i].src = 'about:blank';
+              frames[bufIdx][i].dataset.pendingSrc = item.url;
+            } else {
+              frames[bufIdx][i].src = item.url;
+              delete frames[bufIdx][i].dataset.pendingSrc;
+            }
           }
         } else {
           clearCell(bufIdx, i);
           wrappers[bufIdx][i].style.visibility = 'hidden';
         }
       }
+    }
+
+    // Laadt alle uitgestelde (@fresh) iframes in deze buffer alsnog.
+    function startFreshFrames(bufIdx) {
+      frames[bufIdx].forEach(f => {
+        if (f.dataset.pendingSrc) {
+          f.src = f.dataset.pendingSrc;
+          delete f.dataset.pendingSrc;
+        }
+      });
     }
 
     function scheduleNextPreload() {
@@ -710,7 +746,7 @@
       preloadTimeoutId = setTimeout(() => {
         if (!isSingleWebcamZoomed) {
           grids[hiddenBuffer].classList.add('preloading');
-          loadBatchIntoBuffer(hiddenBuffer, upcomingStart);
+          loadBatchIntoBuffer(hiddenBuffer, upcomingStart, false, true);
         }
       }, preloadDelayMs);
     }
@@ -738,6 +774,7 @@
       grids[oldBuffer].classList.remove('active', 'preloading');
 
       activeBuffer = nextBuffer;
+      startFreshFrames(nextBuffer);
       currentBatchStart = targetStart;
       selectedCellIndex = newSelectedCell;
       updateSelectionHighlight();
