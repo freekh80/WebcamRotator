@@ -734,6 +734,28 @@
       });
     }
 
+    // Maakt de iframe heel even 2px smaller zodat de pagina erin een resize-event krijgt.
+    // Sommige viewers (zoals Skaping) starten hun pan-animatie pas na zo'n resize.
+    function nudgeFrame(f) {
+      if (!f.src || f.src === 'about:blank') return;
+      f.style.width = 'calc(100% - 2px)';
+      setTimeout(() => { f.style.width = ''; }, 250);
+    }
+
+    function nudgeBuffer(bufIdx) {
+      frames[bufIdx].forEach(nudgeFrame);
+    }
+
+    for (let b = 0; b < 2; b++) {
+      for (let i = 0; i < 4; i++) {
+        frames[b][i].addEventListener('load', () => {
+          setTimeout(() => {
+            if (b === activeBuffer) nudgeFrame(frames[b][i]);
+          }, 1500);
+        });
+      }
+    }
+
     function scheduleNextPreload() {
       if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
       if (webcamItems.length <= gridSize || isSingleWebcamZoomed) return;
@@ -775,6 +797,7 @@
 
       activeBuffer = nextBuffer;
       startFreshFrames(nextBuffer);
+      setTimeout(() => nudgeBuffer(nextBuffer), 800);
       currentBatchStart = targetStart;
       selectedCellIndex = newSelectedCell;
       updateSelectionHighlight();
