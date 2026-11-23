@@ -221,6 +221,11 @@
       margin-top: 20px;
       font-size: 1.1em;
     }
+    #version-text {
+      color: #8fa3b8;
+      margin-top: 10px;
+      font-size: 0.9em;
+    }
   </style>
 </head>
 <body>
@@ -230,6 +235,7 @@
       <h1>Klik / Tik of druk op OK om te starten</h1>
       <p>Dit activeert de webcam carrousel op volledig scherm</p>
       <p id="info-text">Instellingen laden...</p>
+      <p id="version-text"></p>
     </div>
   </div>
 
@@ -341,8 +347,27 @@
 
     const overlay = document.getElementById('start-overlay');
     const infoText = document.getElementById('info-text');
+    const versionText = document.getElementById('version-text');
     const backButton = document.getElementById('back-button');
     const updateToast = document.getElementById('update-toast');
+
+    function getFormattedLastModified() {
+      const raw = document.lastModified;
+      const parsed = raw ? new Date(raw) : null;
+      if (parsed && !isNaN(parsed.getTime())) {
+        return parsed.toLocaleString('nl-NL', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        });
+      }
+      return raw || 'Onbekend';
+    }
+
+    versionText.textContent = `Versie index.html: ${getFormattedLastModified()}`;
 
     function isDirectImageUrl(rawUrl) {
       try {
