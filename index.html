@@ -18,7 +18,6 @@
       font-family: sans-serif;
     }
 
-    /* opacity: 0.01 op de achtergrondlaag voorkomt dat Google TV / Chromium voorladen pauzeert */
     .grid-layer {
       position: fixed;
       top: 0;
@@ -27,12 +26,20 @@
       height: 100vh;
       display: grid;
       background-color: #000;
-      opacity: 0.01;
+      opacity: 0;
       z-index: 1;
       pointer-events: none;
       transition: opacity 0.45s ease-in-out;
     }
+    /* Preload-laag ligt bovenop (z-index: 3) met opacity 0.002: onzichtbaar voor het oog, maar niet 'occluded' voor Chromium */
+    .grid-layer.preloading {
+      background-color: transparent;
+      opacity: 0.002;
+      z-index: 3;
+      pointer-events: none;
+    }
     .grid-layer.active {
+      background-color: #000;
       opacity: 1;
       z-index: 2;
       pointer-events: auto;
@@ -94,7 +101,6 @@
       border: none;
       display: block;
       pointer-events: auto;
-      transform-origin: 0 0;
     }
 
     .webcam-img {
@@ -235,25 +241,25 @@
       <div class="webcam-label" id="grid0-label0"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 0)"></div>
       <img class="webcam-img" id="grid0-img0" alt="" />
-      <iframe id="grid0-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid0-frame0" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid0-wrapper1">
       <div class="webcam-label" id="grid0-label1"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 1)"></div>
       <img class="webcam-img" id="grid0-img1" alt="" />
-      <iframe id="grid0-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid0-frame1" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid0-wrapper2">
       <div class="webcam-label" id="grid0-label2"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 2)"></div>
       <img class="webcam-img" id="grid0-img2" alt="" />
-      <iframe id="grid0-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid0-frame2" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid0-wrapper3">
       <div class="webcam-label" id="grid0-label3"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(0, 3)"></div>
       <img class="webcam-img" id="grid0-img3" alt="" />
-      <iframe id="grid0-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid0-frame3" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
   </div>
 
@@ -262,25 +268,25 @@
       <div class="webcam-label" id="grid1-label0"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 0)"></div>
       <img class="webcam-img" id="grid1-img0" alt="" />
-      <iframe id="grid1-frame0" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid1-frame0" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid1-wrapper1">
       <div class="webcam-label" id="grid1-label1"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 1)"></div>
       <img class="webcam-img" id="grid1-img1" alt="" />
-      <iframe id="grid1-frame1" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid1-frame1" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid1-wrapper2">
       <div class="webcam-label" id="grid1-label2"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 2)"></div>
       <img class="webcam-img" id="grid1-img2" alt="" />
-      <iframe id="grid1-frame2" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid1-frame2" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
     <div class="iframe-wrapper" id="grid1-wrapper3">
       <div class="webcam-label" id="grid1-label3"></div>
       <div class="click-overlay" onclick="openFullscreenWebcam(1, 3)"></div>
       <img class="webcam-img" id="grid1-img3" alt="" />
-      <iframe id="grid1-frame3" src="about:blank" allow="autoplay; fullscreen"></iframe>
+      <iframe id="grid1-frame3" src="about:blank" allow="autoplay *; fullscreen *; accelerometer *; gyroscope *; encrypted-media *"></iframe>
     </div>
   </div>
 
@@ -337,73 +343,6 @@
     const infoText = document.getElementById('info-text');
     const backButton = document.getElementById('back-button');
     const updateToast = document.getElementById('update-toast');
-
-    function isSkapingUrl(rawUrl) {
-      try {
-        const urlObj = new URL(rawUrl);
-        return urlObj.hostname === 'skaping.com' || urlObj.hostname.endsWith('.skaping.com');
-      } catch (e) {
-        return false;
-      }
-    }
-
-    function buildOptimizedIframeUrl(rawUrl) {
-      try {
-        const urlObj = new URL(rawUrl);
-        if (urlObj.hostname === 'skaping.com' || urlObj.hostname.endsWith('.skaping.com')) {
-          const segments = urlObj.pathname.split('/').filter(Boolean);
-          // Gebruik /embed voor standaard Skaping-cam-URL's zodat de speler direct beeldvullend start
-          if (segments.length === 2 && segments[1] !== 'embed' && segments[1] !== 'video') {
-            urlObj.pathname = '/' + segments.join('/') + '/embed';
-          }
-          return urlObj.toString();
-        }
-      } catch (e) {}
-      return rawUrl;
-    }
-
-    function updateIframeScale(bufIdx, cellIdx) {
-      const iframeEl = frames[bufIdx][cellIdx];
-      const wrapperEl = wrappers[bufIdx][cellIdx];
-      if (!iframeEl || !wrapperEl) return;
-
-      if (iframeEl.dataset.virtualDesktop === 'true') {
-        const rect = wrapperEl.getBoundingClientRect();
-        const w = rect.width || (window.innerWidth / (gridSize === 1 ? 1 : 2));
-        const h = rect.height || (window.innerHeight / (gridSize <= 2 ? 1 : 2));
-        const virtualWidth = 1280;
-        const virtualHeight = Math.max(400, Math.round(virtualWidth * (h / Math.max(1, w))));
-        const scale = w / virtualWidth;
-
-        iframeEl.style.width = virtualWidth + 'px';
-        iframeEl.style.height = virtualHeight + 'px';
-        iframeEl.style.transform = `scale(${scale})`;
-      } else {
-        iframeEl.style.width = '100%';
-        iframeEl.style.height = '100%';
-        iframeEl.style.transform = '';
-      }
-    }
-
-    function updateAllIframeScales() {
-      for (let b = 0; b < 2; b++) {
-        for (let i = 0; i < 4; i++) {
-          updateIframeScale(b, i);
-        }
-      }
-    }
-
-    if (typeof ResizeObserver !== 'undefined') {
-      const cellResizeObserver = new ResizeObserver(() => {
-        updateAllIframeScales();
-      });
-      for (let b = 0; b < 2; b++) {
-        for (let i = 0; i < 4; i++) {
-          cellResizeObserver.observe(wrappers[b][i]);
-        }
-      }
-    }
-    window.addEventListener('resize', updateAllIframeScales);
 
     function isDirectImageUrl(rawUrl) {
       try {
@@ -623,8 +562,6 @@
     }
 
     function clearCell(bufIdx, cellIdx) {
-      frames[bufIdx][cellIdx].dataset.virtualDesktop = 'false';
-      updateIframeScale(bufIdx, cellIdx);
       frames[bufIdx][cellIdx].src = 'about:blank';
       frames[bufIdx][cellIdx].style.display = 'block';
       images[bufIdx][cellIdx].removeAttribute('src');
@@ -659,10 +596,10 @@
           }
         }
       });
-      requestAnimationFrame(updateAllIframeScales);
     }
 
     function clearBuffer(bufIdx) {
+      grids[bufIdx].classList.remove('preloading');
       bufferLoadedStart[bufIdx] = -1;
       for (let i = 0; i < 4; i++) {
         clearCell(bufIdx, i);
@@ -718,8 +655,6 @@
           wrappers[bufIdx][i].style.visibility = 'visible';
 
           if (isDirectImageUrl(item.url)) {
-            frames[bufIdx][i].dataset.virtualDesktop = 'false';
-            updateIframeScale(bufIdx, i);
             frames[bufIdx][i].src = 'about:blank';
             frames[bufIdx][i].style.display = 'none';
             images[bufIdx][i].style.display = 'block';
@@ -729,11 +664,7 @@
             images[bufIdx][i].style.display = 'none';
             images[bufIdx][i].classList.remove('panoramic');
             frames[bufIdx][i].style.display = 'block';
-
-            const useVirtualDesktop = isSkapingUrl(item.url);
-            frames[bufIdx][i].dataset.virtualDesktop = useVirtualDesktop ? 'true' : 'false';
-            updateIframeScale(bufIdx, i);
-            frames[bufIdx][i].src = buildOptimizedIframeUrl(item.url);
+            frames[bufIdx][i].src = item.url;
           }
         } else {
           clearCell(bufIdx, i);
@@ -753,6 +684,7 @@
 
       preloadTimeoutId = setTimeout(() => {
         if (!isSingleWebcamZoomed) {
+          grids[hiddenBuffer].classList.add('preloading');
           loadBatchIntoBuffer(hiddenBuffer, upcomingStart);
         }
       }, preloadDelayMs);
@@ -776,9 +708,9 @@
 
       loadBatchIntoBuffer(nextBuffer, targetStart);
 
+      grids[nextBuffer].classList.remove('preloading');
       grids[nextBuffer].classList.add('active');
-      grids[oldBuffer].classList.remove('active');
-      requestAnimationFrame(updateAllIframeScales);
+      grids[oldBuffer].classList.remove('active', 'preloading');
 
       activeBuffer = nextBuffer;
       currentBatchStart = targetStart;
@@ -823,8 +755,9 @@
 
       const nextBuffer = 1 - activeBuffer;
       loadBatchIntoBuffer(nextBuffer, currentBatchStart, true);
+      grids[nextBuffer].classList.remove('preloading');
       grids[nextBuffer].classList.add('active');
-      grids[activeBuffer].classList.remove('active');
+      grids[activeBuffer].classList.remove('active', 'preloading');
       activeBuffer = nextBuffer;
       updateSelectionHighlight();
 
@@ -885,7 +818,6 @@
 
       grids[bufIdx].classList.add('zoom-container');
       wrappers[bufIdx][cellIdx].classList.add('fullscreen-active');
-      requestAnimationFrame(() => updateIframeScale(bufIdx, cellIdx));
 
       backButton.style.display = 'block';
       backButton.focus();
@@ -909,7 +841,6 @@
 
         wrappers[b][c].classList.remove('fullscreen-active');
         grids[b].classList.remove('zoom-container');
-        requestAnimationFrame(() => updateIframeScale(b, c));
       }
 
       backButton.style.display = 'none';
@@ -1064,9 +995,9 @@
       currentBatchStart = 0;
       selectedCellIndex = 0;
       loadBatchIntoBuffer(0, 0, true);
+      grids[0].classList.remove('preloading');
       grids[0].classList.add('active');
-      grids[1].classList.remove('active');
-      requestAnimationFrame(updateAllIframeScales);
+      grids[1].classList.remove('active', 'preloading');
       updateSelectionHighlight();
 
       resetRotationTimer();
