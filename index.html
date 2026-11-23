@@ -195,6 +195,7 @@
     let preloadEnabled = true;        // preload = on/off
     let labelSeconds = 5;             // label_seconds (0 = nooit tonen, always = altijd tonen)
     let panSeconds = 56;              // pan_seconds (schuifsnelheid van panorama-afbeeldingen)
+    let nudgeEnabled = true;          // nudge = on/off (geeft de webcam-iframe een duwtje, zie nudgeLayer)
 
     let webcamItems = [];
 
@@ -450,6 +451,7 @@
         preload: preloadEnabled,
         label: labelSeconds,
         pan: panSeconds,
+        nudge: nudgeEnabled,
         items: null
       };
 
@@ -476,6 +478,9 @@
 
           const panMatch = text.match(/pan_seconds\s*=\s*(\d+)/i);
           if (panMatch) data.pan = Math.max(5, parseInt(panMatch[1], 10));
+
+          const nudgeMatch = text.match(/nudge\s*=\s*(on|off|true|false|yes|no|1|0|aan|uit)/i);
+          if (nudgeMatch) data.nudge = /^(on|true|yes|1|aan)$/i.test(nudgeMatch[1]);
         }
       } catch (err) {
         console.warn("Kon config.file niet ophalen:", err);
@@ -504,6 +509,7 @@
       preloadEnabled = data.preload;
       labelSeconds = data.label;
       panSeconds = data.pan;
+      nudgeEnabled = data.nudge;
       document.documentElement.style.setProperty('--pan-duration', panSeconds + 's');
     }
 
@@ -539,6 +545,26 @@
         L.frame.style.display = 'block';
         L.frame.src = item.url;
       }
+    }
+
+    // Sommige viewers (zoals Skaping) beginnen pas te draaien/schuiven na een muisbeweging in de iframe.
+    // We kunnen geen muisbeweging in een iframe van een andere site simuleren, maar als de iframe 1px
+    // verschuift terwijl de cursor op het scherm staat, stuurt Chromium zelf vaak een 'nep'-muisbeweging
+    // naar wat er onder de cursor ligt. Dat proberen we hier, een paar keer na het wisselen.
+    function nudgeLayer(b) {
+      const el = layers[b].el;
+      el.style.left = '1px';
+      setTimeout(() => { el.style.left = '0px'; }, 120);
+    }
+
+    function scheduleNudges() {
+      if (!nudgeEnabled) return;
+      const b = activeLayer;
+      [FADE_MS + 150, 1500, 3500, 7000].forEach(ms => {
+        setTimeout(() => {
+          if (activeLayer === b && isStarted) nudgeLayer(b);
+        }, ms);
+      });
     }
 
     function finishFade() {
@@ -592,6 +618,7 @@
       fadeTimer = setTimeout(finishFade, FADE_MS + 50);
 
       showLabel(webcamItems[idx].name);
+      scheduleNudges();
       if (!paused) scheduleTick();
     }
 
@@ -690,6 +717,7 @@
         data.preload !== preloadEnabled ||
         data.label !== labelSeconds ||
         data.pan !== panSeconds ||
+        data.nudge !== nudgeEnabled ||
         !itemsEqual(data.items, webcamItems);
 
       if (hasChanged) applyUpdate(data);
@@ -785,6 +813,7 @@
       loadLayer(0, 0);
 
       showLabel(webcamItems[0].name);
+      scheduleNudges();
       scheduleTick();
       startBackgroundSync();
       window.focus();
