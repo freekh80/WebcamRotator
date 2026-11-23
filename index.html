@@ -369,10 +369,63 @@
 
     versionText.textContent = `Versie index.html: ${getFormattedLastModified()}`;
 
+    // Skaping-paginas (bv. https://www.skaping.com/collet-d-allevard/sommet) worden niet als iframe
+    // getoond, maar als losse panorama-afbeelding die door onze eigen CSS-animatie schuift.
+    // De afbeeldings-URL heeft het patroon .../<slug>/<jaar>/<maand>/<dag>/large/<uu>-<mm>.jpg
+    function getSkapingSlug(rawUrl) {
+      try {
+        const u = new URL(rawUrl);
+        if (!/(^|\.)skaping\.com$/i.test(u.hostname)) return null;
+        const parts = u.pathname.split('/').filter(Boolean);
+        if (parts.length !== 2) return null;
+        return parts.join('.');
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // stepsBack = hoeveel stappen van 5 minuten we terug gaan (voor als de nieuwste foto er nog niet staat)
+    function buildSkapingImageUrl(slug, stepsBack) {
+      const d = new Date(Date.now() - (stepsBack * 5 + 5) * 60000);
+      const p = {};
+      try {
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Paris',
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+        }).formatToParts(d).forEach(x => { p[x.type] = x.value; });
+      } catch (e) {
+        const pad = n => String(n).padStart(2, '0');
+        p.year = String(d.getFullYear());
+        p.month = pad(d.getMonth() + 1);
+        p.day = pad(d.getDate());
+        p.hour = pad(d.getHours());
+        p.minute = pad(d.getMinutes());
+      }
+      const hh = p.hour === '24' ? '00' : p.hour;
+      const mm = String(Math.floor(parseInt(p.minute, 10) / 5) * 5).padStart(2, '0');
+      return `https://skaping.s3.gra.io.cloud.ovh.net/${slug}/${p.year}/${p.month}/${p.day}/large/${hh}-${mm}.jpg`;
+    }
+
+    function setCellImage(bufIdx, cellIdx, item) {
+      const img = images[bufIdx][cellIdx];
+      const slug = getSkapingSlug(item.url);
+      if (slug) {
+        img.dataset.skapingSlug = slug;
+        img.dataset.skapingStep = '0';
+        img.dataset.origUrl = item.url;
+        img.src = buildSkapingImageUrl(slug, 0);
+      } else {
+        delete img.dataset.skapingSlug;
+        img.src = buildOptimizedImageUrl(item.url, false);
+      }
+    }
+
     function isDirectImageUrl(rawUrl) {
       try {
         const urlObj = new URL(rawUrl);
         const path = urlObj.pathname.toLowerCase();
+        if (getSkapingSlug(rawUrl)) return true;
         if (/\.(jpe?g|png|webp|gif)$/i.test(path)) return true;
         if ((urlObj.hostname === 'backend.roundshot.com' || urlObj.hostname === 'storage.roundshot.com') && path.includes('/cams/')) {
           return true;
@@ -405,6 +458,23 @@
           }
         });
         imgEl.addEventListener('error', () => {
+          const slug = imgEl.dataset.skapingSlug;
+          if (slug) {
+            const step = parseInt(imgEl.dataset.skapingStep || '0', 10) + 1;
+            if (step <= 24) {
+              imgEl.dataset.skapingStep = String(step);
+              imgEl.src = buildSkapingImageUrl(slug, step);
+            } else {
+              // Geen foto gevonden: val terug op de gewone iframe
+              const orig = imgEl.dataset.origUrl;
+              delete imgEl.dataset.skapingSlug;
+              imgEl.removeAttribute('src');
+              imgEl.style.display = 'none';
+              frames[b][i].style.display = 'block';
+              frames[b][i].src = orig;
+            }
+            return;
+          }
           if (imgEl.src && imgEl.src.includes('/half')) {
             imgEl.src = imgEl.src.replace('/half', '/quarter');
           }
@@ -605,6 +675,7 @@
       frames[bufIdx][cellIdx].src = 'about:blank';
       frames[bufIdx][cellIdx].style.display = 'block';
       delete frames[bufIdx][cellIdx].dataset.pendingSrc;
+      delete images[bufIdx][cellIdx].dataset.skapingSlug;
       images[bufIdx][cellIdx].removeAttribute('src');
       images[bufIdx][cellIdx].style.display = 'none';
       images[bufIdx][cellIdx].classList.remove('panoramic');
@@ -702,7 +773,7 @@
             delete frames[bufIdx][i].dataset.pendingSrc;
             frames[bufIdx][i].style.display = 'none';
             images[bufIdx][i].style.display = 'block';
-            images[bufIdx][i].src = buildOptimizedImageUrl(item.url, false);
+            setCellImage(bufIdx, i, item);
           } else {
             images[bufIdx][i].removeAttribute('src');
             images[bufIdx][i].style.display = 'none';
@@ -891,7 +962,7 @@
       if (preloadTimeoutId) clearTimeout(preloadTimeoutId);
       clearBuffer(1 - activeBuffer);
 
-      if (isDirectImageUrl(item.url)) {
+      if (isDirectImageUrl(item.url) && !getSkapingSlug(item.url)) {
         images[bufIdx][cellIdx].src = buildOptimizedImageUrl(item.url, true);
       }
 
@@ -920,7 +991,7 @@
         const c = zoomedCell;
         const itemIndex = currentBatchStart + c;
         const item = webcamItems[itemIndex];
-        if (item && isDirectImageUrl(item.url)) {
+        if (item && isDirectImageUrl(item.url) && !getSkapingSlug(item.url)) {
           images[b][c].src = buildOptimizedImageUrl(item.url, false);
         }
 
