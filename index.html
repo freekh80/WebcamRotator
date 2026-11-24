@@ -227,7 +227,7 @@
     // ---------- Instellingen (uit config.file) ----------
     let intervalInSeconds = 5;        // rotating_time
     let checkIntervalInSeconds = 120; // check_interval
-    let preloadEnabled = true;        // preload = on/off
+    let preloadSeconds = 5;           // preload = aantal seconden vóór de wissel dat de volgende webcam wordt geladen (0 = uit)
     let labelSeconds = 5;             // label_seconds (0 = nooit tonen, always = altijd tonen)
     let panSeconds = 56;              // pan_seconds (schuifsnelheid van panorama-afbeeldingen)
     let nudgeEnabled = true;          // nudge = on/off (geeft de webcam-iframe een duwtje, zie nudgeLayer)
@@ -491,7 +491,7 @@
       const data = {
         interval: intervalInSeconds,
         checkInterval: checkIntervalInSeconds,
-        preload: preloadEnabled,
+        preload: preloadSeconds,
         label: labelSeconds,
         pan: panSeconds,
         nudge: nudgeEnabled,
@@ -515,8 +515,12 @@
           const checkMatch = text.match(/check_interval\s*=\s*(\d+)/i);
           if (checkMatch) data.checkInterval = Math.max(15, parseInt(checkMatch[1], 10));
 
-          const preloadMatch = text.match(/preload\s*=\s*(on|off|true|false|yes|no|1|0|aan|uit)/i);
-          if (preloadMatch) data.preload = /^(on|true|yes|1|aan)$/i.test(preloadMatch[1]);
+          const preloadMatch = text.match(/preload\s*=\s*(\d+|on|off|true|false|yes|no|aan|uit)/i);
+          if (preloadMatch) {
+            const v = preloadMatch[1];
+            if (/^\d+$/.test(v)) data.preload = parseInt(v, 10);          // 0 = uit, anders het aantal seconden
+            else data.preload = /^(on|true|yes|aan)$/i.test(v) ? 5 : 0;  // 'on' = 5 seconden, 'off' = uit
+          }
 
           const labelMatch = text.match(/label_seconds\s*=\s*(\d+|always)/i);
           if (labelMatch) data.label = /always/i.test(labelMatch[1]) ? -1 : parseInt(labelMatch[1], 10);
@@ -557,7 +561,7 @@
     function applySettings(data) {
       intervalInSeconds = data.interval;
       checkIntervalInSeconds = data.checkInterval;
-      preloadEnabled = data.preload;
+      preloadSeconds = data.preload;
       labelSeconds = data.label;
       panSeconds = data.pan;
       nudgeEnabled = data.nudge;
@@ -700,7 +704,7 @@
 
     // Laadt de volgende webcam in de standby-laag (die ONDER de actieve laag ligt).
     function preloadNext() {
-      if (!preloadEnabled || paused || webcamItems.length < 2) return;
+      if (preloadSeconds <= 0 || paused || webcamItems.length < 2) return;
       if (pendingFinalize) {
         preloadTimer = setTimeout(preloadNext, 300);
         return;
@@ -741,8 +745,8 @@
       const seconds = intervalInSeconds;
       tickTimer = setTimeout(() => showIndex(cur + 1), seconds * 1000);
 
-      if (preloadEnabled) {
-        const lead = Math.min(8, seconds * 0.7);
+      if (preloadSeconds > 0) {
+        const lead = Math.min(preloadSeconds, seconds);
         preloadTimer = setTimeout(preloadNext, Math.max(0, seconds - lead) * 1000);
       }
     }
@@ -792,7 +796,7 @@
       const hasChanged =
         data.interval !== intervalInSeconds ||
         data.checkInterval !== checkIntervalInSeconds ||
-        data.preload !== preloadEnabled ||
+        data.preload !== preloadSeconds ||
         data.label !== labelSeconds ||
         data.pan !== panSeconds ||
         data.nudge !== nudgeEnabled ||
@@ -860,7 +864,7 @@
         if (webcamItems.length === 0) {
           infoText.innerHTML = "<span style='color:#ff4d4d;'>Geen webcam URL's gevonden!</span><br><small style='color:#aaa;'>Controleer 'webcams.list' in je GitHub repo.</small>";
         } else {
-          infoText.textContent = `Rotatietijd: ${intervalInSeconds}s | Webcams: ${webcamItems.length} | Voorladen: ${preloadEnabled ? 'aan' : 'uit'}`;
+          infoText.textContent = `Rotatietijd: ${intervalInSeconds}s | Webcams: ${webcamItems.length} | Voorladen: ${preloadSeconds > 0 ? preloadSeconds + 's' : 'uit'}`;
         }
       } catch (err) {
         infoText.innerHTML = `<span style='color:#ff4d4d;'>Fout bij laden: ${err.message}</span>`;
