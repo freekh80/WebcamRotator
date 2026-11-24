@@ -70,6 +70,39 @@
       100% { object-position: 90% 50%; }
     }
 
+    /* Onzichtbare laag die een klik opvangt om te pauzeren/hervatten (click_pause in config.file) */
+    #click-catcher {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 5;
+      background: transparent;
+    }
+    #click-catcher.off {
+      display: none;
+    }
+    #pause-badge {
+      position: fixed;
+      top: 22px;
+      right: 24px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.72);
+      color: #00d2ff;
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 15px;
+      font-weight: 600;
+      border: 1px solid rgba(0, 210, 255, 0.5);
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease-in-out;
+    }
+    #pause-badge.visible {
+      opacity: 1;
+    }
+
     /* Naam van de webcam: alleen kort zichtbaar na het wisselen (zie label_seconds in config.file) */
     #webcam-label {
       position: fixed;
@@ -185,6 +218,8 @@
     </div>
   </div>
 
+  <div id="click-catcher"></div>
+  <div id="pause-badge">⏸ Gepauzeerd – klik om verder te gaan</div>
   <div id="webcam-label"></div>
   <div id="update-toast"></div>
 
@@ -197,6 +232,7 @@
     let panSeconds = 56;              // pan_seconds (schuifsnelheid van panorama-afbeeldingen)
     let nudgeEnabled = true;          // nudge = on/off (geeft de webcam-iframe een duwtje, zie nudgeLayer)
     let focusFrameEnabled = true;     // focus_frame = on/off (geeft de actieve webcam-iframe de toetsenbordfocus)
+    let clickPauseEnabled = true;     // click_pause = on/off (één klik pauzeert, nog een klik hervat)
 
     let webcamItems = [];
 
@@ -228,6 +264,12 @@
     const versionText = document.getElementById('version-text');
     const labelEl = document.getElementById('webcam-label');
     const toastEl = document.getElementById('update-toast');
+    const clickCatcher = document.getElementById('click-catcher');
+    const pauseBadge = document.getElementById('pause-badge');
+
+    clickCatcher.addEventListener('click', () => {
+      if (isStarted) togglePause();
+    });
 
     function getFormattedLastModified() {
       const raw = document.lastModified;
@@ -454,6 +496,7 @@
         pan: panSeconds,
         nudge: nudgeEnabled,
         focusFrame: focusFrameEnabled,
+        clickPause: clickPauseEnabled,
         items: null
       };
 
@@ -486,6 +529,9 @@
 
           const focusMatch = text.match(/focus_frame\s*=\s*(on|off|true|false|yes|no|1|0|aan|uit)/i);
           if (focusMatch) data.focusFrame = /^(on|true|yes|1|aan)$/i.test(focusMatch[1]);
+
+          const clickMatch = text.match(/click_pause\s*=\s*(on|off|true|false|yes|no|1|0|aan|uit)/i);
+          if (clickMatch) data.clickPause = /^(on|true|yes|1|aan)$/i.test(clickMatch[1]);
         }
       } catch (err) {
         console.warn("Kon config.file niet ophalen:", err);
@@ -516,6 +562,8 @@
       panSeconds = data.pan;
       nudgeEnabled = data.nudge;
       focusFrameEnabled = data.focusFrame;
+      clickPauseEnabled = data.clickPause;
+      clickCatcher.classList.toggle('off', !clickPauseEnabled);
       document.documentElement.style.setProperty('--pan-duration', panSeconds + 's');
     }
 
@@ -701,14 +749,16 @@
 
     function togglePause() {
       paused = !paused;
+      pauseBadge.classList.toggle('visible', paused);
       if (paused) {
         if (tickTimer) clearTimeout(tickTimer);
         if (preloadTimer) clearTimeout(preloadTimer);
-        showToast("Gepauzeerd");
       } else {
         showToast("Hervat");
         scheduleTick();
       }
+      // Een klik op de pagina haalt de focus uit de iframe; geef hem direct terug zodat de webcam blijft draaien.
+      if (focusFrameEnabled) focusLayer(activeLayer);
     }
 
     // ---------- Updates uit config.file / webcams.list ----------
@@ -747,6 +797,7 @@
         data.pan !== panSeconds ||
         data.nudge !== nudgeEnabled ||
         data.focusFrame !== focusFrameEnabled ||
+        data.clickPause !== clickPauseEnabled ||
         !itemsEqual(data.items, webcamItems);
 
       if (hasChanged) applyUpdate(data);
