@@ -1,6 +1,6 @@
 rotating=0
 grid=1
 rotating_time=60
-preload=off
+preload=on
 nudge=off
 label_seconds=always
