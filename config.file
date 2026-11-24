@@ -2,3 +2,4 @@ rotating=0
 grid=1
 rotating_time=30
 preload=on
+label_seconds=always
