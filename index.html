@@ -196,6 +196,7 @@
     let labelSeconds = 5;             // label_seconds (0 = nooit tonen, always = altijd tonen)
     let panSeconds = 56;              // pan_seconds (schuifsnelheid van panorama-afbeeldingen)
     let nudgeEnabled = true;          // nudge = on/off (geeft de webcam-iframe een duwtje, zie nudgeLayer)
+    let focusFrameEnabled = true;     // focus_frame = on/off (geeft de actieve webcam-iframe de toetsenbordfocus)
 
     let webcamItems = [];
 
@@ -452,6 +453,7 @@
         label: labelSeconds,
         pan: panSeconds,
         nudge: nudgeEnabled,
+        focusFrame: focusFrameEnabled,
         items: null
       };
 
@@ -481,6 +483,9 @@
 
           const nudgeMatch = text.match(/nudge\s*=\s*(on|off|true|false|yes|no|1|0|aan|uit)/i);
           if (nudgeMatch) data.nudge = /^(on|true|yes|1|aan)$/i.test(nudgeMatch[1]);
+
+          const focusMatch = text.match(/focus_frame\s*=\s*(on|off|true|false|yes|no|1|0|aan|uit)/i);
+          if (focusMatch) data.focusFrame = /^(on|true|yes|1|aan)$/i.test(focusMatch[1]);
         }
       } catch (err) {
         console.warn("Kon config.file niet ophalen:", err);
@@ -510,6 +515,7 @@
       labelSeconds = data.label;
       panSeconds = data.pan;
       nudgeEnabled = data.nudge;
+      focusFrameEnabled = data.focusFrame;
       document.documentElement.style.setProperty('--pan-duration', panSeconds + 's');
     }
 
@@ -557,15 +563,37 @@
       setTimeout(() => { el.style.left = '0px'; }, 120);
     }
 
+    // Een pagina die je direct opent heeft de focus; een iframe krijgt die normaal niet. Sommige viewers
+    // (zoals Skaping) beginnen pas als hun venster actief is. Hier geven we de actieve iframe die focus.
+    // Let op: met de focus in de iframe komen toetsen van de afstandsbediening niet meer bij deze pagina
+    // aan (bij een muis/cursor maakt dat niet uit).
+    function focusLayer(b) {
+      const f = layers[b].frame;
+      try {
+        f.focus();
+        if (f.contentWindow) f.contentWindow.focus();
+      } catch (e) {}
+    }
+
     function scheduleNudges() {
-      if (!nudgeEnabled) return;
+      if (!nudgeEnabled && !focusFrameEnabled) return;
       const b = activeLayer;
       [FADE_MS + 150, 1500, 3500, 7000].forEach(ms => {
         setTimeout(() => {
-          if (activeLayer === b && isStarted) nudgeLayer(b);
+          if (activeLayer !== b || !isStarted) return;
+          if (focusFrameEnabled) focusLayer(b);
+          if (nudgeEnabled) nudgeLayer(b);
         }, ms);
       });
     }
+
+    layers.forEach((L, b) => {
+      L.frame.addEventListener('load', () => {
+        if (!isStarted || !focusFrameEnabled || activeLayer !== b) return;
+        if (!L.frame.src || L.frame.src === 'about:blank') return;
+        setTimeout(() => { if (activeLayer === b) focusLayer(b); }, 300);
+      });
+    });
 
     function finishFade() {
       if (fadeTimer) {
@@ -718,6 +746,7 @@
         data.label !== labelSeconds ||
         data.pan !== panSeconds ||
         data.nudge !== nudgeEnabled ||
+        data.focusFrame !== focusFrameEnabled ||
         !itemsEqual(data.items, webcamItems);
 
       if (hasChanged) applyUpdate(data);
@@ -761,6 +790,7 @@
 
     // Als de focus in een iframe belandt, krijgt de afstandsbediening geen toetsen meer door: haal hem terug.
     window.addEventListener('blur', () => {
+      if (focusFrameEnabled) return;
       setTimeout(() => {
         const a = document.activeElement;
         if (a && a.tagName === 'IFRAME') a.blur();
